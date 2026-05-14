@@ -1,0 +1,23 @@
+# 本地测试用的内置 key 版本（避免误推）
+*.local.html
+*.local.js
+.env
+.env.*
+!.env.example
+
+# Python / Node 缓存
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# 构建产物
+dist/
+build/
+*.log

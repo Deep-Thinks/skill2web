@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ian Handdrawn PPT · 单文件网页版（skill2web hero case）</title>
+  <style>
+    /* ===== reset & base ===== */
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",
+                  "Helvetica Neue",Helvetica,Arial,sans-serif;
+      background:#FBFAF5;
+      color:#111;
+      line-height:1.55;
+      font-size:14px;
+      min-height:100vh;
+    }
+    a{color:#3B6FB6;text-decoration:none}
+    a:hover{text-decoration:underline}
+    button{cursor:pointer;font:inherit}
+    input,textarea,select{font:inherit;color:inherit}
+
+    /* ===== layout ===== */
+    header{
+      padding:24px 32px 18px;
+      border-bottom:1px solid #E5E0D5;
+      background:#FBFAF5;
+      display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;
+      position:sticky;top:0;z-index:50;
+    }
+    header h1{
+      margin:0;font-size:22px;font-weight:600;letter-spacing:.01em;
+    }
+    header .subtitle{font-size:12px;color:#5F5A50;margin-top:4px}
+    .btn-settings{
+      background:transparent;border:1px solid #C5BFB2;color:#5F5A50;
+      padding:6px 14px;border-radius:6px;font-size:12px;
+    }
+    .btn-settings:hover{background:#F2EEE4}
+
+    main{padding:24px 32px 64px;max-width:1200px;margin:0 auto}
+
+    section{
+      background:#FFF;
+      border:1px solid #E5E0D5;
+      border-radius:10px;
+      padding:24px 28px;
+      margin-bottom:20px;
+      box-shadow:0 1px 2px rgba(0,0,0,.02);
+    }
+    section h2{
+      margin:0 0 16px;
+      font-size:16px;font-weight:600;
+      display:flex;align-items:center;gap:8px;
+    }
+    section h2 .step-num{
+      display:inline-block;width:22px;height:22px;
+      background:#D9E8F6;border-radius:50%;
+      text-align:center;line-height:22px;font-size:12px;color:#3B6FB6;
+    }
+
+    /* ===== form ===== */
+    .form-row{margin-bottom:14px}
+    .form-row label{display:block;font-size:12px;color:#5F5A50;margin-bottom:6px}
+    .form-row input[type="text"],
+    .form-row input[type="password"],
+    .form-row textarea,
+    .form-row select{
+      width:100%;
+      padding:8px 12px;
+      border:1px solid #E5E0D5;border-radius:6px;
+      background:#FBFAF5;
+      transition:border-color .15s;
+    }
+    .form-row textarea{min-height:160px;resize:vertical;font-family:inherit}
+    .form-row input:focus,.form-row textarea:focus,.form-row select:focus{
+      outline:none;border-color:#3B6FB6;background:#FFF;
+    }
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+    .btn-primary{
+      background:#3B6FB6;color:#FFF;border:none;
+      padding:10px 24px;border-radius:6px;font-size:14px;font-weight:500;
+    }
+    .btn-primary:hover{background:#2D5A99}
+    .btn-primary:disabled{background:#A8B5C7;cursor:not-allowed}
+    .btn-secondary{
+      background:#FFF;color:#5F5A50;border:1px solid #C5BFB2;
+      padding:8px 16px;border-radius:6px;font-size:13px;
+    }
+    .btn-secondary:hover{background:#F2EEE4}
+
+    /* ===== settings panel ===== */
+    #settings-panel{background:#FFF8E7;border-color:#F5DEB8}
+    #settings-panel h2 .step-num{background:#F5DEB8;color:#9C7A3B}
+    .key-section{margin-bottom:18px}
+    .key-section h3{margin:0 0 8px;font-size:13px;color:#9C7A3B}
+    details{margin-top:12px;font-size:12px}
+    details summary{cursor:pointer;color:#5F5A50;user-select:none}
+    details summary:hover{color:#3B6FB6}
+    details .key-help{
+      margin-top:8px;padding:12px 14px;background:#FFF;
+      border-radius:6px;line-height:1.6;color:#5F5A50;
+    }
+    details .key-help code{background:#F2EEE4;padding:1px 5px;border-radius:3px;font-size:11.5px}
+
+    /* ===== progress ===== */
+    #progress-section{display:none}
+    #progress-section.active{display:block}
+    .progress-step{
+      display:flex;align-items:center;gap:10px;
+      padding:8px 0;font-size:13px;color:#5F5A50;
+    }
+    .progress-step .indicator{
+      width:18px;height:18px;border-radius:50%;
+      background:#E5E0D5;color:transparent;
+      display:flex;align-items:center;justify-content:center;font-size:10px;
+      flex-shrink:0;
+    }
+    .progress-step.running .indicator{background:#3B6FB6;color:#FFF}
+    .progress-step.running .indicator::after{content:"…"}
+    .progress-step.done .indicator{background:#7CB342;color:#FFF}
+    .progress-step.done .indicator::after{content:"✓"}
+    .progress-step.fail .indicator{background:#D66F4D;color:#FFF}
+    .progress-step.fail .indicator::after{content:"!"}
+    .progress-step.running{color:#111;font-weight:500}
+    .progress-step.done{color:#5F5A50}
+    .progress-step.fail{color:#D66F4D}
+
+    #status-log{
+      margin-top:14px;padding:12px 14px;
+      background:#FBFAF5;border:1px solid #E5E0D5;border-radius:6px;
+      font-family:"SF Mono","Monaco","Consolas",monospace;font-size:11.5px;
+      max-height:200px;overflow-y:auto;color:#5F5A50;
+      white-space:pre-wrap;word-break:break-all;
+    }
+    #status-log .log-error{color:#D66F4D}
+    #status-log .log-success{color:#558B2F}
+
+    /* ===== results ===== */
+    #results-section{display:none}
+    #results-section.active{display:block}
+    .blueprint-toggle{
+      font-size:12px;color:#3B6FB6;cursor:pointer;margin-bottom:12px;
+    }
+    .blueprint-toggle:hover{text-decoration:underline}
+    #deck-blueprint{
+      display:none;
+      background:#F8F6F0;border:1px solid #E5E0D5;border-radius:6px;
+      padding:14px;margin-bottom:18px;
+      font-family:"SF Mono","Monaco","Consolas",monospace;font-size:11.5px;
+      max-height:300px;overflow-y:auto;white-space:pre-wrap;
+    }
+    #deck-blueprint.active{display:block}
+
+    .slide-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+      gap:16px;
+    }
+    .slide-card{
+      border:1px solid #E5E0D5;border-radius:8px;overflow:hidden;
+      background:#FBFAF5;
+      display:flex;flex-direction:column;
+    }
+    .slide-card .slide-thumb{
+      aspect-ratio:16/9;
+      background:#F2EEE4;
+      display:flex;align-items:center;justify-content:center;
+      color:#A8A29A;font-size:12px;position:relative;
+      overflow:hidden;
+    }
+    .slide-card.cover .slide-thumb{aspect-ratio:21/9}
+    .slide-card .slide-thumb img{
+      width:100%;height:100%;object-fit:cover;display:block;
+    }
+    .slide-card .slide-info{
+      padding:10px 12px;border-top:1px solid #E5E0D5;
+    }
+    .slide-card .slide-title{
+      font-size:13px;font-weight:500;margin:0 0 3px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .slide-card .slide-meta{
+      font-size:11px;color:#A8A29A;
+    }
+    .slide-card .slide-actions{
+      padding:8px 12px;border-top:1px solid #E5E0D5;display:flex;gap:8px;
+    }
+    .slide-card .slide-actions button{
+      flex:1;font-size:11px;padding:5px 8px;
+      background:transparent;border:1px solid #E5E0D5;color:#5F5A50;border-radius:4px;
+    }
+    .slide-card .slide-actions button:hover:not(:disabled){background:#F2EEE4}
+    .slide-card .slide-actions button:disabled{opacity:.4;cursor:not-allowed}
+    .slide-card.error{border-color:#F5C7B6}
+    .slide-card.error .slide-thumb{background:#FDF4F0;color:#D66F4D}
+    .slide-card.running .slide-thumb::after{
+      content:"";position:absolute;inset:0;
+      background:linear-gradient(90deg,transparent,#FFF8 50%,transparent);
+      animation:shimmer 1.6s infinite;
+    }
+    @keyframes shimmer{
+      0%{transform:translateX(-100%)}
+      100%{transform:translateX(100%)}
+    }
+
+    .actions-row{
+      display:flex;gap:10px;margin-top:18px;
+      flex-wrap:wrap;
+    }
+
+    footer{
+      padding:18px 32px 24px;
+      color:#A8A29A;font-size:11.5px;
+      border-top:1px solid #E5E0D5;
+      text-align:center;
+    }
+    footer a{color:#5F5A50}
+
+    .hint{color:#A8A29A;font-size:12px;margin-top:6px}
+    .error-banner{
+      background:#FDF4F0;border:1px solid #F5C7B6;color:#A85C44;
+      padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:12.5px;
+      display:none;
+    }
+    .error-banner.active{display:block}
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Ian Handdrawn PPT · 单文件网页版</h1>
+    <div class="subtitle">
+      把文章 / 大纲变成中文手绘风技术 PPT 图像 ·
+      上游 skill：<a href="https://github.com/helloianneo/ian-handdrawn-ppt" target="_blank">@helloianneo</a> · MIT ·
+      编译 by <a href="../../" target="_blank">skill2web</a>
+    </div>
+  </div>
+  <button class="btn-settings" id="btn-toggle-settings">设置</button>
+</header>
+
+<main>
+
+  <!-- ===== 设置面板 ===== -->
+  <section id="settings-panel">
+    <h2><span class="step-num">⚙</span>API 设置（仅存浏览器本地）</h2>
+
+    <div class="error-banner" id="settings-error"></div>
+
+    <div class="key-section">
+      <h3>① LLM 推理（用于拆解内容、生成 slide spine）</h3>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="llm-key" placeholder="sk-xxx 或同等格式" autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="llm-model" value="step-3.5-flash">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Base URL（chat completions 的 base，不含 /chat/completions 后缀）</label>
+        <input type="text" id="llm-base-url" value="https://api.stepfun.com/v1">
+      </div>
+    </div>
+
+    <div class="key-section">
+      <h3>② 图像生成（用于生成每张 slide 的手绘风 PNG）</h3>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="image-key" placeholder="sk-xxx" autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="image-model" value="gpt-image-2">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Base URL（不含 /images/generations 后缀）</label>
+          <input type="text" id="image-base-url" value="https://image.token-recyclebin.com/v1">
+        </div>
+        <div class="form-row">
+          <label>Endpoint 模式</label>
+          <select id="image-endpoint-mode">
+            <option value="generations">/images/generations（标准；从头生成）</option>
+            <option value="edits">/images/edits（带空白参考图；兼容 explorecipe 模式）</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="btn-primary" id="btn-save-keys">保存到 localStorage</button>
+      <button class="btn-secondary" id="btn-clear-keys">清空</button>
+    </div>
+
+    <details>
+      <summary>怎么获取这两个 key？</summary>
+      <div class="key-help">
+        <p><strong>本 hero case 默认用以下供应商</strong>（也接受其他 OpenAI 兼容 endpoint）：</p>
+        <ul>
+          <li><strong>LLM 推理</strong>：<code>StepFun</code>（<code>https://api.stepfun.com/v1</code>）或 DeepSeek（<code>https://api.deepseek.com/v1</code>，model <code>deepseek-chat</code>）。任何兼容 OpenAI <code>/chat/completions</code> 的服务都行。</li>
+          <li><strong>图像生成</strong>：<code>https://image.token-recyclebin.com/v1</code> with <code>gpt-image-2</code>。这是一个第三方 OpenAI 兼容代理，按 token 计费，中文文字渲染较好。</li>
+        </ul>
+        <p>用户私有数据（输入内容、生成的图）<strong>只在你的浏览器和上述供应商之间流动</strong>，不经过 skill2web 作者任何服务器。Key 仅写入你浏览器 <code>localStorage</code>，刷新页面保留，关闭浏览器不会上传。</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== 输入面板 ===== -->
+  <section id="input-section">
+    <h2><span class="step-num">1</span>输入内容</h2>
+
+    <div class="form-row">
+      <label>文章 / Markdown / 大纲（粘贴或直接写主题）</label>
+      <textarea id="content" placeholder="例：
+《AI 在哪里自动化，哪里不要自动化》
+- 核心区别：决定的事 vs 执行的事
+- 三问法：能写下规则吗？错了多严重？发现错要多快？
+- 例：财务自动化 vs 写论文
+- 结论：把决定留给人，把执行交给 AI"></textarea>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-row">
+        <label>目标读者（可选）</label>
+        <input type="text" id="audience" placeholder="例：有基础的工程师 / 协会成员 / 学生">
+      </div>
+      <div class="form-row">
+        <label>使用场景</label>
+        <select id="scenario">
+          <option value="teaching">教学课件</option>
+          <option value="explain">公众科普</option>
+          <option value="product">产品 / 方案说明</option>
+          <option value="share">分享 / 朋友圈配图</option>
+          <option value="report">汇报</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-row">
+        <label>页数（影响 slide spine）</label>
+        <select id="length">
+          <option value="5">5 页（短想法）</option>
+          <option value="8" selected>8 页（推荐）</option>
+          <option value="10">10 页</option>
+          <option value="12">12 页（一篇文章）</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>视觉组合</label>
+        <select id="output-style">
+          <option value="body-only" selected>仅 body 16:9</option>
+          <option value="cover-plus-body">cover 21:9 + body 16:9</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions-row">
+      <button class="btn-primary" id="btn-generate">开始生成</button>
+      <span class="hint" id="generate-hint">首次会用 LLM 拆解内容（约 10-30 秒），然后并行生成 N 张图（每张 10-60 秒）。</span>
+    </div>
+  </section>
+
+  <!-- ===== 进度面板 ===== -->
+  <section id="progress-section">
+    <h2><span class="step-num">2</span>进度</h2>
+    <div class="progress-step" id="step-plan">
+      <span class="indicator"></span>
+      <span class="label">规划 deck spine（LLM 调用）</span>
+    </div>
+    <div class="progress-step" id="step-images">
+      <span class="indicator"></span>
+      <span class="label">生成 slide 图像（并发调图像 API）</span>
+    </div>
+    <div id="status-log"></div>
+  </section>
+
+  <!-- ===== 结果面板 ===== -->
+  <section id="results-section">
+    <h2><span class="step-num">3</span>结果</h2>
+    <div class="blueprint-toggle" id="blueprint-toggle">▸ 查看 / 隐藏 deck blueprint JSON</div>
+    <pre id="deck-blueprint"></pre>
+    <div class="slide-grid" id="slide-grid"></div>
+    <div class="actions-row">
+      <button class="btn-secondary" id="btn-download-all">下载全部 PNG</button>
+      <button class="btn-secondary" id="btn-regenerate-failed">重试所有失败 slide</button>
+      <button class="btn-secondary" id="btn-reset">从头开始</button>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  本网页由 <a href="../../" target="_blank">skill2web</a> 从 <a href="https://github.com/helloianneo/ian-handdrawn-ppt" target="_blank">ian-handdrawn-ppt</a>（Ian · MIT）编译。
+  你的输入内容和生成的图像仅在浏览器和你配置的 LLM / 图像供应商之间流动。
+</footer>
+
+<script>
+/* ============================================================
+   skill2web hero case — ian-handdrawn-ppt 单文件网页版
+   核心流程：
+   1. 用户输入内容 → 配置 deck 参数
+   2. LLM 一次性输出完整 deck spine（含 intake + narrative + per-slide composition）
+   3. 对每张 slide 拼接 image generation prompt（套用 deck style lock + page role lock）
+   4. 并发（限速 3）调用图像 API，每张 slide 一张 PNG
+   5. 网格展示 + 单张下载
+
+   内联自上游：
+   - DECK_STYLE_LOCK / PAGE_ROLE_COVER / PAGE_ROLE_BODY / REFERENCE_MATCH
+   - ARCHETYPES（来自 references/slide-archetypes.md）
+   - THEME_TOKENS_SUBSET（仅用到 size 字段）
+   ============================================================ */
+
+/* ===== 上游内联：来自 references/prompt-patterns.md ===== */
+const DECK_STYLE_LOCK = `Refined commercial Chinese handdrawn technical article/PPT illustration.
+Complete raster image on very light warm white paper, near #FBFAF5, with extremely subtle grain.
+No full-page border and no rectangular frame unless explicitly requested.
+Upper-left small page number in handwritten style.
+Centered medium Chinese title with one pale blue handdrawn underline.
+Small subtitle under title when needed.
+For body pages, keep title size optically consistent across pages; do not enlarge short titles.
+Fine black ink and pencil linework, delicate hatching, stable but slightly irregular.
+Muted pastel marker labels: pale blue, sage green, peach, lavender.
+Sparse corner construction marks only: faint pale grey grid, dots, ruler ticks, measurement lines.
+Generous negative space, calm premium teaching-note feeling.
+Mostly small object-based diagrams; no more than one tiny person, placed far in a corner.
+Props should be blank or contain only simple line marks unless their text appears in Required text only.
+Avoid full-page border, yellow paper, beige paper, giant fonts, cheap poster look, childish doodles, many characters, thick marker strokes, dense bullets, corporate template style, shadows, gradients, neon, watermark, gibberish text, English filler.`;
+
+const REFERENCE_MATCH = `Match the approved article-illustration shell: near-white warm paper, no full-page border, upper-left small page number, centered restrained handwritten Chinese title, one pale blue underline, small subtitle beneath, sparse corner grid/dot construction marks, fine ink-and-pencil object drawings with delicate hatching, small refined central diagram, and large negative space. Keep the outer shell consistent across pages; only vary the central diagram layout according to the content.`;
+
+const PAGE_ROLE_COVER = `Page role: cover image.
+Canvas: 21:9 ultra-wide.
+Title may be medium-large but still elegant and restrained.
+Main metaphor occupies about 50-55% of page width.
+No page number unless requested.`;
+
+const PAGE_ROLE_BODY = `Page role: body illustration.
+Canvas: 16:9.
+This is not a cover page.
+Title is medium and restrained, optically consistent with the other body pages.
+Even if the title is short, do not enlarge it.
+Central diagram occupies about 50-60% of page width and 35-45% of page height.`;
+
+/* ===== 上游内联：来自 references/slide-archetypes.md ===== */
+const ARCHETYPES = [
+  "cover-metaphor",
+  "single-concept",
+  "left-right-contrast",
+  "transformation-contrast",
+  "horizontal-process",
+  "circular-mechanism",
+  "branching-map",
+  "classification-map",
+  "matrix-table",
+  "main-metaphor",
+  "annotation",
+  "takeaway"
+];
+
+/* ===== 图像 API 兼容性：尺寸映射 =====
+   ian-handdrawn-ppt 原 spec：cover 21:9 (2520x1080), body 16:9 (1920x1080)
+   gpt-image-2 实际支持：1024x1024, 1024x1536, 1536x1024
+   折中策略：cover 用 1536x1024（≈3:2，最接近的横版），body 用 1536x1024
+   未来 v0.2：可在浏览器端 canvas crop 出 21:9
+*/
+const SIZE_BY_ROLE = {
+  cover: "1536x1024",
+  body:  "1536x1024"
+};
+
+/* ===== 并发控制 ===== */
+const IMAGE_CONCURRENCY = 3;     // 同时跑几个图像请求
+const LLM_TIMEOUT_MS    = 120000;
+const IMAGE_TIMEOUT_MS  = 180000;
+const IMAGE_RETRY       = 1;      // 单张失败重试次数
+
+/* ===== localStorage key ===== */
+const LS_KEY = "skill2web__ian-handdrawn-ppt__settings__v1";
+
+/* ============================================================
+   状态管理
+   ============================================================ */
+const state = {
+  settings: null,           // {llmKey, llmBaseUrl, llmModel, imageKey, imageBaseUrl, imageModel, imageEndpointMode}
+  blueprint: null,          // 来自 LLM 的完整 spine
+  slides: [],               // 每张 slide 的 runtime 状态 {idx, role, status, prompt, b64, error}
+};
+
+/* ============================================================
+   入口
+   ============================================================ */
+document.addEventListener("DOMContentLoaded", () => {
+  loadSettings();
+  bindUI();
+  // 如果没配 key，自动展开设置；否则可以隐藏
+  if (!state.settings || !state.settings.llmKey || !state.settings.imageKey) {
+    document.getElementById("settings-panel").style.display = "block";
+  }
+});
+
+function bindUI() {
+  document.getElementById("btn-toggle-settings").onclick = () => {
+    const p = document.getElementById("settings-panel");
+    p.style.display = (p.style.display === "none") ? "block" : "none";
+  };
+  document.getElementById("btn-save-keys").onclick = saveSettings;
+  document.getElementById("btn-clear-keys").onclick = clearSettings;
+  document.getElementById("btn-generate").onclick = startGenerate;
+  document.getElementById("btn-reset").onclick = () => {
+    document.getElementById("progress-section").classList.remove("active");
+    document.getElementById("results-section").classList.remove("active");
+    state.blueprint = null;
+    state.slides = [];
+    document.getElementById("status-log").textContent = "";
+    document.getElementById("slide-grid").innerHTML = "";
+  };
+  document.getElementById("btn-download-all").onclick = downloadAllImages;
+  document.getElementById("btn-regenerate-failed").onclick = retryFailedSlides;
+  document.getElementById("blueprint-toggle").onclick = () => {
+    document.getElementById("deck-blueprint").classList.toggle("active");
+  };
+}
+
+/* ============================================================
+   settings
+   ============================================================ */
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    state.settings = s;
+    setIfExists("llm-key",            s.llmKey            || "");
+    setIfExists("llm-base-url",       s.llmBaseUrl        || "https://api.stepfun.com/v1");
+    setIfExists("llm-model",          s.llmModel          || "step-3.5-flash");
+    setIfExists("image-key",          s.imageKey          || "");
+    setIfExists("image-base-url",     s.imageBaseUrl      || "https://image.token-recyclebin.com/v1");
+    setIfExists("image-model",        s.imageModel        || "gpt-image-2");
+    setIfExists("image-endpoint-mode",s.imageEndpointMode || "generations");
+  } catch (e) {
+    console.warn("loadSettings failed", e);
+  }
+}
+function setIfExists(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.tagName === "SELECT") el.value = val; else el.value = val;
+}
+function saveSettings() {
+  const s = {
+    llmKey:            document.getElementById("llm-key").value.trim(),
+    llmBaseUrl:        document.getElementById("llm-base-url").value.trim().replace(/\/+$/,""),
+    llmModel:          document.getElementById("llm-model").value.trim(),
+    imageKey:          document.getElementById("image-key").value.trim(),
+    imageBaseUrl:      document.getElementById("image-base-url").value.trim().replace(/\/+$/,""),
+    imageModel:        document.getElementById("image-model").value.trim(),
+    imageEndpointMode: document.getElementById("image-endpoint-mode").value,
+  };
+  const errors = [];
+  if (!s.llmKey)        errors.push("LLM API Key 不能为空");
+  if (!s.llmBaseUrl)    errors.push("LLM Base URL 不能为空");
+  if (!s.imageKey)      errors.push("图像 API Key 不能为空");
+  if (!s.imageBaseUrl)  errors.push("图像 Base URL 不能为空");
+  const err = document.getElementById("settings-error");
+  if (errors.length) {
+    err.textContent = errors.join("；");
+    err.classList.add("active");
+    return;
+  }
+  err.classList.remove("active");
+  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  state.settings = s;
+  // 视觉反馈
+  const btn = document.getElementById("btn-save-keys");
+  const orig = btn.textContent;
+  btn.textContent = "✓ 已保存";
+  setTimeout(() => btn.textContent = orig, 1200);
+}
+function clearSettings() {
+  if (!confirm("确认清空所有 API 设置？")) return;
+  localStorage.removeItem(LS_KEY);
+  ["llm-key","image-key"].forEach(id => document.getElementById(id).value = "");
+  state.settings = null;
+}
+
+/* ============================================================
+   日志
+   ============================================================ */
+function log(msg, kind = "") {
+  const el = document.getElementById("status-log");
+  const ts = new Date().toLocaleTimeString();
+  const cls = kind ? ` class="log-${kind}"` : "";
+  el.innerHTML += `<span${cls}>[${ts}] ${escapeHtml(msg)}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+/* ============================================================
+   主流程
+   ============================================================ */
+async function startGenerate() {
+  if (!state.settings || !state.settings.llmKey || !state.settings.imageKey) {
+    alert("请先在 [设置] 里填好 LLM 与图像 API key。");
+    document.getElementById("settings-panel").style.display = "block";
+    return;
+  }
+  const content = document.getElementById("content").value.trim();
+  if (!content) {
+    alert("请先填写内容 / 大纲。");
+    return;
+  }
+
+  const params = {
+    content,
+    audience:    document.getElementById("audience").value.trim() || "中文有基础读者",
+    scenario:    document.getElementById("scenario").value,
+    length:      parseInt(document.getElementById("length").value, 10),
+    outputStyle: document.getElementById("output-style").value,
+  };
+
+  // UI
+  document.getElementById("btn-generate").disabled = true;
+  document.getElementById("progress-section").classList.add("active");
+  document.getElementById("results-section").classList.remove("active");
+  document.getElementById("slide-grid").innerHTML = "";
+  document.getElementById("status-log").textContent = "";
+  resetStep("step-plan");
+  resetStep("step-images");
+
+  try {
+    // ===== step 1: LLM 拆解 + spine =====
+    markStep("step-plan", "running");
+    log("调用 LLM 规划 deck spine ...");
+    state.blueprint = await planDeck(params);
+    document.getElementById("deck-blueprint").textContent =
+      JSON.stringify(state.blueprint, null, 2);
+    markStep("step-plan", "done");
+    log(`deck spine 完成：${state.blueprint.slides.length} 张 slide`, "success");
+
+    // ===== step 2: 准备 slide 卡片 + 并发生成图像 =====
+    initSlideCards(state.blueprint, params);
+    markStep("step-images", "running");
+    document.getElementById("results-section").classList.add("active");
+    await generateAllImages();
+    const okCount = state.slides.filter(s => s.status === "done").length;
+    const failCount = state.slides.filter(s => s.status === "fail").length;
+    if (failCount === 0) {
+      markStep("step-images", "done");
+      log(`全部 ${okCount} 张 slide 生成完成。`, "success");
+    } else {
+      markStep("step-images", "fail");
+      log(`${okCount} 张成功 / ${failCount} 张失败。可点单张右下"重试"或顶部"重试所有失败 slide"。`, "error");
+    }
+  } catch (err) {
+    log("致命错误：" + err.message, "error");
+    console.error(err);
+  } finally {
+    document.getElementById("btn-generate").disabled = false;
+  }
+}
+function resetStep(id) {
+  const el = document.getElementById(id);
+  el.classList.remove("running","done","fail");
+}
+function markStep(id, kind) {
+  const el = document.getElementById(id);
+  el.classList.remove("running","done","fail");
+  el.classList.add(kind);
+}
+
+/* ============================================================
+   step 1: LLM 拆解 deck spine
+   ============================================================ */
+async function planDeck(params) {
+  const sys = buildSpinePlannerSystemPrompt();
+  const usr = buildSpinePlannerUserPrompt(params);
+
+  const raw = await callLLM([
+    { role: "system", content: sys },
+    { role: "user",   content: usr },
+  ]);
+
+  // 解析：从 markdown 代码块 / 纯 JSON 里抽
+  const json = extractJson(raw);
+  if (!json || !Array.isArray(json.slides)) {
+    throw new Error("LLM 返回不是合法 spine JSON。原始片段：" + raw.slice(0, 200));
+  }
+  // 基本校验
+  json.slides = json.slides.map((s, i) => ({
+    idx:           i + 1,
+    role:          s.role || (i === 0 && params.outputStyle === "cover-plus-body" ? "cover" : "body"),
+    title:         s.title || `第${i+1}页`,
+    subtitle:      s.subtitle || "",
+    archetype:     s.archetype || "main-metaphor",
+    main_point:    s.main_point || "",
+    composition:   s.composition || "Small refined object-based diagram in the center; thin lines; calm negative space.",
+    required_text: Array.isArray(s.required_text) ? s.required_text : [],
+  }));
+  json.total = json.slides.length;
+  return json;
+}
+
+function buildSpinePlannerSystemPrompt() {
+  return `你是 Ian Handdrawn PPT skill 的拆解器。读用户的内容（文章 / Markdown / 大纲 / 主题），输出一个 deck spine 的 JSON，供后续图像生成器为每张 slide 生成中文手绘风技术 PPT 页面图像。
+
+输出严格 JSON，结构如下：
+{
+  "deck_type": "teaching | persuasive | report | product | knowledge-card",
+  "topic": "<主题>",
+  "audience": "<受众>",
+  "slides": [
+    {
+      "role": "cover | body",
+      "title": "<5-12 个汉字的短中文标题>",
+      "subtitle": "<可选 3-12 个汉字>",
+      "archetype": "${ARCHETYPES.join(" | ")}",
+      "main_point": "<一句话总结这一页的判断>",
+      "composition": "<一段英文，描述这一页中央示意图的具体布局：几个对象、左右还是流程、有什么手绘元素、用什么 pastel 颜色标记。不要描述边框/页码/纸张 —— 那些由 deck style lock 统一处理。>",
+      "required_text": ["<图里所有出现的中文文字，一项一行，每项 2-12 个字>"]
+    }
+  ]
+}
+
+规则：
+1. slide 数量必须恰好等于用户指定的页数。
+2. archetype 必须从给定列表里选。封面默认 cover-metaphor。
+3. 每页只有一个主要观点（main_point），不堆 bullet。
+4. required_text 必须**短而精确**，每项 ≤ 12 汉字，整页加起来 ≤ 6 项，避免出现 LLM 编出来的填充文字。
+5. 标题不要超过 12 个汉字。
+6. composition 必须用英文写，因为后续会送给图像模型。
+7. 不要输出 JSON 之外的任何文字，不要 markdown 代码块包裹。如果模型限制需要包裹，请用 \`\`\`json ... \`\`\`。`;
+}
+
+function buildSpinePlannerUserPrompt(params) {
+  const wantsCover = params.outputStyle === "cover-plus-body";
+  return `请生成 deck spine。
+
+【场景】${params.scenario}
+【受众】${params.audience}
+【页数】${params.length}（${wantsCover ? "第 1 页是 cover-metaphor，其余是 body" : "全部 body，无封面"}）
+
+【内容 / 大纲】
+${params.content}
+
+请按系统提示的 JSON 结构输出。`;
+}
+
+/* ============================================================
+   LLM 调用（OpenAI 兼容）
+   ============================================================ */
+async function callLLM(messages) {
+  const s = state.settings;
+  const url = s.llmBaseUrl + "/chat/completions";
+  const body = {
+    model: s.llmModel,
+    messages,
+    temperature: 0.4,
+  };
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + s.llmKey,
+        "Content-Type":  "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`LLM ${resp.status}: ${t.slice(0, 300)}`);
+    }
+    const j = await resp.json();
+    return j.choices?.[0]?.message?.content || "";
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+function extractJson(text) {
+  if (!text) return null;
+  // 直接 parse
+  try { return JSON.parse(text); } catch (e) {}
+  // 从 ```json``` 块抽
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) {
+    try { return JSON.parse(fence[1]); } catch (e) {}
+  }
+  // 找第一个 { ... } 段
+  const start = text.indexOf("{");
+  const end   = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch (e) {}
+  }
+  return null;
+}
+
+/* ============================================================
+   step 2: 并发生成图像
+   ============================================================ */
+function initSlideCards(blueprint, params) {
+  state.slides = blueprint.slides.map(s => ({
+    ...s,
+    status: "pending",
+    b64: null,
+    error: null,
+    promptText: "",
+  }));
+  const grid = document.getElementById("slide-grid");
+  grid.innerHTML = "";
+  state.slides.forEach(s => grid.appendChild(renderSlideCard(s)));
+}
+
+function renderSlideCard(slide) {
+  const card = document.createElement("div");
+  card.className = "slide-card " + slide.role + " " + slide.status;
+  card.dataset.idx = slide.idx;
+  card.innerHTML = `
+    <div class="slide-thumb" data-thumb>
+      <span data-thumb-text>${slide.status === "pending" ? "等待中" : "生成中…"}</span>
+    </div>
+    <div class="slide-info">
+      <div class="slide-title">${escapeHtml(slide.idx + ". " + slide.title)}</div>
+      <div class="slide-meta">${escapeHtml(slide.archetype)} · ${slide.role}</div>
+    </div>
+    <div class="slide-actions">
+      <button data-act="download" disabled>下载</button>
+      <button data-act="retry">重试</button>
+      <button data-act="prompt">看 prompt</button>
+    </div>
+  `;
+  card.querySelector("[data-act='download']").onclick = () => downloadOne(slide.idx);
+  card.querySelector("[data-act='retry']").onclick    = () => retryOne(slide.idx);
+  card.querySelector("[data-act='prompt']").onclick   = () => showPrompt(slide.idx);
+  return card;
+}
+
+function updateSlideCard(slide) {
+  const card = document.querySelector(`.slide-card[data-idx="${slide.idx}"]`);
+  if (!card) return;
+  card.className = "slide-card " + slide.role + " " + slide.status;
+  const thumb = card.querySelector("[data-thumb]");
+  const text  = card.querySelector("[data-thumb-text]");
+  if (slide.status === "done" && slide.b64) {
+    thumb.innerHTML = `<img alt="${escapeHtml(slide.title)}" src="data:image/png;base64,${slide.b64}">`;
+  } else if (slide.status === "fail") {
+    thumb.innerHTML = `<span data-thumb-text>失败：${escapeHtml((slide.error || "").slice(0, 80))}</span>`;
+  } else if (slide.status === "running") {
+    thumb.innerHTML = `<span data-thumb-text>生成中…</span>`;
+  } else {
+    thumb.innerHTML = `<span data-thumb-text>等待中</span>`;
+  }
+  card.querySelector("[data-act='download']").disabled = !(slide.status === "done" && slide.b64);
+}
+
+async function generateAllImages() {
+  const queue = state.slides.filter(s => s.status !== "done").map(s => s.idx);
+  await runWithConcurrency(queue, IMAGE_CONCURRENCY, async (idx) => {
+    await processSlide(idx);
+  });
+}
+
+async function runWithConcurrency(items, n, worker) {
+  const runners = new Array(Math.min(n, items.length)).fill(0).map(async () => {
+    while (items.length) {
+      const item = items.shift();
+      try { await worker(item); } catch (e) { /* swallow; per-item handles */ }
+    }
+  });
+  await Promise.all(runners);
+}
+
+async function processSlide(idx) {
+  const slide = state.slides[idx - 1];
+  slide.status = "running";
+  slide.error = null;
+  updateSlideCard(slide);
+
+  const total = state.slides.length;
+  const promptText = buildImagePrompt(slide, total);
+  slide.promptText = promptText;
+
+  let lastErr;
+  for (let attempt = 0; attempt <= IMAGE_RETRY; attempt++) {
+    try {
+      log(`[#${idx}] ${attempt === 0 ? "首次" : "重试 " + attempt} 调用图像 API`);
+      const b64 = await callImageAPI(promptText, SIZE_BY_ROLE[slide.role] || SIZE_BY_ROLE.body);
+      slide.b64 = b64;
+      slide.status = "done";
+      updateSlideCard(slide);
+      log(`[#${idx}] 完成`, "success");
+      return;
+    } catch (e) {
+      lastErr = e;
+      log(`[#${idx}] 失败：${e.message}`, "error");
+    }
+  }
+  slide.status = "fail";
+  slide.error = lastErr?.message || "未知错误";
+  updateSlideCard(slide);
+}
+
+function buildImagePrompt(slide, total) {
+  const roleLock = slide.role === "cover" ? PAGE_ROLE_COVER : PAGE_ROLE_BODY;
+  const pageTag = slide.role === "cover" ? "" : `Create page ${pad2(slide.idx)}/${pad2(total)} of a coherent deck.\nPage number text exactly: ${pad2(slide.idx)} / ${pad2(total)}`;
+
+  return `Use case: Chinese handdrawn technical article/PPT visual.
+Asset type: one complete Chinese handdrawn technical PPT page image, final raster page.
+${pageTag}
+${roleLock}
+
+Title exactly: ${slide.title}
+${slide.subtitle ? "Subtitle exactly: " + slide.subtitle : ""}
+Archetype: ${slide.archetype}
+Main point: ${slide.main_point}
+
+Apply the deck style lock:
+${DECK_STYLE_LOCK}
+
+Reference match clause:
+${REFERENCE_MATCH}
+
+Composition:
+${slide.composition}
+
+Required text only:
+${slide.required_text.length ? slide.required_text.map(t => "- " + t).join("\n") : "(no extra labels beyond title)"}
+
+Avoid:
+full-page border, yellow paper, beige paper, oversized central objects, oversized body-page title, heavy bottom boxes, extra text, invented micro-labels, gibberish, English, watermark, crowded composition, many people, childish cartoons, thick outlines, saturated colors, corporate template look.`;
+}
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+/* ============================================================
+   图像 API 调用
+   ============================================================ */
+async function callImageAPI(prompt, size) {
+  const s = state.settings;
+  const mode = s.imageEndpointMode || "generations";
+
+  if (mode === "generations") {
+    return await callImageGenerations(prompt, size);
+  } else {
+    return await callImageEdits(prompt, size);
+  }
+}
+
+async function callImageGenerations(prompt, size) {
+  const s = state.settings;
+  const url = s.imageBaseUrl + "/images/generations";
+  const body = {
+    model:  s.imageModel,
+    prompt: prompt,
+    n:      1,
+    size:   size,
+    response_format: "b64_json",
+  };
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), IMAGE_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + s.imageKey,
+        "Content-Type":  "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`image gen ${resp.status}: ${t.slice(0, 300)}`);
+    }
+    const j = await resp.json();
+    const item = j.data?.[0];
+    if (!item) throw new Error("响应缺 data[0]");
+    if (item.b64_json) return item.b64_json;
+    if (item.url) {
+      // 把远程 URL 拉回并转 base64
+      const imgResp = await fetch(item.url);
+      const blob = await imgResp.blob();
+      return await blobToBase64(blob);
+    }
+    throw new Error("响应缺 b64_json 和 url");
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+async function callImageEdits(prompt, size) {
+  // explorecipe 模式：multipart 带空白参考图
+  const s = state.settings;
+  const url = s.imageBaseUrl + "/images/edits";
+  const blank = await makeBlankPng(parseInt(size.split("x")[0], 10),
+                                   parseInt(size.split("x")[1], 10));
+  const fd = new FormData();
+  fd.append("model",  s.imageModel);
+  fd.append("prompt", prompt);
+  fd.append("size",   size);
+  fd.append("n",      "1");
+  fd.append("image",  blank, "blank.png");
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), IMAGE_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + s.imageKey },
+      body: fd,
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`image edits ${resp.status}: ${t.slice(0, 300)}`);
+    }
+    const j = await resp.json();
+    const item = j.data?.[0];
+    if (!item) throw new Error("响应缺 data[0]");
+    if (item.b64_json) return item.b64_json;
+    if (item.url) {
+      const imgResp = await fetch(item.url);
+      const blob = await imgResp.blob();
+      return await blobToBase64(blob);
+    }
+    throw new Error("响应缺 b64_json 和 url");
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+function makeBlankPng(w, h) {
+  return new Promise((resolve) => {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#FBFAF5";
+    ctx.fillRect(0, 0, w, h);
+    c.toBlob((b) => resolve(b), "image/png");
+  });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      const idx = s.indexOf(",");
+      resolve(idx >= 0 ? s.slice(idx + 1) : s);
+    };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+/* ============================================================
+   单张操作
+   ============================================================ */
+function downloadOne(idx) {
+  const slide = state.slides[idx - 1];
+  if (!slide || !slide.b64) return;
+  const filename = `slide-${pad2(idx)}-${sanitizeFilename(slide.title)}.png`;
+  const a = document.createElement("a");
+  a.href = "data:image/png;base64," + slide.b64;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function sanitizeFilename(s) {
+  return String(s || "untitled").replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 40);
+}
+
+async function downloadAllImages() {
+  const dones = state.slides.filter(s => s.status === "done" && s.b64);
+  if (!dones.length) { alert("还没有成功生成的 slide。"); return; }
+  // 简单依次下载（避免引入 JSZip 破坏单文件原则）
+  for (const s of dones) {
+    downloadOne(s.idx);
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+async function retryOne(idx) {
+  const slide = state.slides[idx - 1];
+  if (!slide) return;
+  slide.status = "pending";
+  updateSlideCard(slide);
+  await processSlide(idx);
+}
+
+async function retryFailedSlides() {
+  const failed = state.slides.filter(s => s.status === "fail").map(s => s.idx);
+  if (!failed.length) { alert("没有失败的 slide。"); return; }
+  for (const idx of failed) state.slides[idx - 1].status = "pending";
+  failed.forEach(idx => updateSlideCard(state.slides[idx - 1]));
+  await runWithConcurrency(failed, IMAGE_CONCURRENCY, processSlide);
+}
+
+function showPrompt(idx) {
+  const slide = state.slides[idx - 1];
+  if (!slide || !slide.promptText) {
+    alert("还没拼好 prompt（slide 还没开始生成）。");
+    return;
+  }
+  // 简单弹窗
+  const w = window.open("", "_blank");
+  if (!w) { alert(slide.promptText); return; }
+  w.document.write(`<pre style="font:13px ui-monospace,monospace;padding:24px;white-space:pre-wrap">${escapeHtml(slide.promptText)}</pre>`);
+}
+</script>
+</body>
+</html>
