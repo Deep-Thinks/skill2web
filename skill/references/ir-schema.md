@@ -1,5 +1,16 @@
 # IR Schema
 
+> ⚠️ **HONEST SCOPE (post-codex-review 2026-05-15)**: This IR shape was
+> reverse-engineered from **one** hero case (`ian-handdrawn-ppt`, which is
+> `kind: image-deck`). It is NOT yet a general "any flow-shaped skill" IR.
+> Fields like `static_assets.style_lock` / `role_locks` / `archetypes` and
+> `render_phase.per_item.prompt_template` are clearly image-deck-shaped.
+>
+> Treat this as `image-deck-ir@v0.1` regardless of the `ir_version` value.
+> A truly general IR requires at least one second hand-compile of a
+> non-image-deck skill (e.g. a markdown-report skill) to validate which
+> fields generalize and which collapse into kind-specific extensions.
+
 The IR (Intermediate Representation) is the **contract between extractor and composer**. Everything the composer needs to fill the HTML template must live in IR; everything not in IR must not be guessed by the composer.
 
 This document is the canonical schema. It is informed by the hand-compile of `ian-handdrawn-ppt` (see `../../hero-cases/ian-handdrawn-ppt/LESSONS.md`); the original DESIGN.md draft IR was revised here based on what hand-compiling actually surfaced.
@@ -19,18 +30,31 @@ This document is the canonical schema. It is informed by the hand-compile of `ia
 ```jsonc
 {
   "ir_version":     "0.1",
+  "ir_kind":        "image-deck",          // REQUIRED. v0.1 only accepts this value.
+                                           // Other kinds (template-html, pptx-canvas,
+                                           // png-canvas) are speculation until a
+                                           // matching hand-compile validates them.
   "skill_meta":     { /* who, what, license */ },
-  "static_assets":  { /* raw text + lookups, inlined verbatim */ },
+  "static_assets":  { /* image-deck-specific: style locks, role locks, archetypes */ },
   "input_schema":   [ /* form fields the end user fills */ ],
   "llm_phase":      { /* the one LLM call that produces the spine */ },
-  "render_phase":   { /* what the browser does with the spine */ },
+  "render_phase":   { /* image-per-slide rendering */ },
   "browser_runtime":{ /* which APIs + tuning */ },
   "error_ux":       { /* per-error friendly copy */ },
   "attribution":    { /* author + license, mandatory in footer + README */ }
 }
 ```
 
-`ir_version` is a string. v0.1 is the only valid value today. Future schema-breaking changes must bump this.
+`ir_version` is a string; v0.1 is the only valid value today.
+
+`ir_kind` is **required** and must be `"image-deck"` in v0.1. The compiler refuses any other value. When a second hero case validates a different kind, this schema will either split into kind-specific files OR grow per-kind sub-schemas — that decision is **deferred until the data exists**.
+
+**What "image-deck-shaped" means**:
+
+- Inputs (text / outline / topic) → one LLM call → an array of "slides" → one image API call per slide → grid of PNGs.
+- `static_assets.style_lock` exists because the visual brand must survive across slides.
+- `render_phase.per_item.prompt_template` exists because each slide is a separate generation call.
+- This shape does NOT generalize to: markdown reports (no slides), editable PPTX (no images), Playwright-rendered posters (no browser equivalent), data-pipeline skills (no LLM), or multi-turn agent skills (more than one LLM call).
 
 ---
 

@@ -21,3 +21,4 @@ venv/
 dist/
 build/
 *.log
+.context/

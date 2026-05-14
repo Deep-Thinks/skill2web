@@ -33,7 +33,17 @@ skill2web/
 
 ## 运行 hero case
 
-`hero-cases/ian-handdrawn-ppt/index.html` 是一个**单文件**网页，但**不能从 `file://` 协议直接打开**（浏览器对 file:// 的 fetch 有限制）。请在 hero-case 目录下起一个本地 http server：
+`hero-cases/ian-handdrawn-ppt/index.html` 是**单文件源码**（无外部 CDN 依赖），但运行时**必须通过 HTTP 协议提供**——浏览器对 `file://` 协议的 `fetch()` / `localStorage` 行为不一致，会导致请求失败或行为漂移。
+
+承诺的精确版本：**"单文件源码 + 任何 HTTP server" = 任何浏览器开**，包括：
+
+- `python3 -m http.server`（最简单）
+- GitHub Pages / Surge / Cloudflare Pages / Netlify
+- 你自己的 nginx / Caddy
+
+不包括："双击 `.html` 文件就用"——这种用法**不稳**，不要承诺给最终用户。
+
+最简单的方法：
 
 ```bash
 cd hero-cases/ian-handdrawn-ppt/
@@ -44,6 +54,8 @@ python3 -m http.server 8765
 首次打开会要求填两个 API key（仅存浏览器 localStorage，永不上传任何第三方）：
 - LLM 推理 key（用于内容拆解 / slide spine 生成）
 - 图像生成 key（用于生成手绘风 PNG）
+
+> ⚠️ **v0.1 已知风险（post-codex-review 2026-05-15）**：默认 provider（DeepSeek、StepFun、`image.token-recyclebin.com`）的浏览器端 CORS **未实测**——它们目前仅作为 Python 后端调用验证过。第一次跑撞 CORS 错的概率非真零；若遇到，请在浏览器 DevTools Network 看 preflight 响应、或换 OpenAI 官方 / Anthropic direct-browser 端点重试。`skill/references/lib-mapper.md` 的 Verification log 是空的——欢迎你的实测结果以 PR 形式回灌。
 
 ## License
 

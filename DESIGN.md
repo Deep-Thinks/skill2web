@@ -8,6 +8,16 @@ Mode: Builder
 
 ---
 
+> **Post-codex-review correction (2026-05-15)**: 在 Day 1 hero case 完成 + skill 本体 scaffold 之后，独立 review（OpenAI Codex CLI consult，session `019e2743-1b49-7851-9015-c1aef7b7b645`）指出本文档 "Approach B (Composed)" 隐含承诺被 v0.1 实现高估了：
+>
+> 1. 当前 IR / `base.html` 都是 **image-deck shape**，不是通用流程化 skill IR。`template-html / pptx-canvas / png-canvas` 在通过对应 hero case 之前应视为**未验证设想**，不是 v0.2 plan。
+> 2. "单文件 HTML、打开即用" 真实约束是"单文件源码，通过 HTTP server 提供"。Provider CORS 也未实测。
+> 3. Analyzer 决策树偏"形状"不偏"运行环境等价性"，需要在 v0.1.1 加强（见 `TODO.md`）。
+>
+> 本文档"Recommended Approach B"的 scope 不变（仍是路线对），但**承诺改写**进 `skill/SKILL.md` 与 `README.md`。
+
+---
+
 ## Problem Statement
 
 AI 从业者写了大量高质量 Claude Code skill（PPT、海报、菜谱、文档生成等），但**只有装了 Claude Code / 类似 agent 的开发者才能用**。普通人——不懂"什么是 agent"的朋友、亲戚、协会的非技术成员——完全无法体验这些工具。Skill 的价值被 agent 这层基础设施门槛锁住了。

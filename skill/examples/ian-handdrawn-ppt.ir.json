@@ -1,6 +1,7 @@
 {
-  "_comment": "Reverse-engineered IR for the hero-case manual compile of ian-handdrawn-ppt. This is what skill2web v0.1 compiler should produce when given the upstream repo. Used as a regression target: a fresh compile run should yield a semantically equivalent IR (modulo input_schema customizations).",
+  "_comment": "Reverse-engineered IR for the hero-case manual compile of ian-handdrawn-ppt. This is what skill2web v0.1 compiler should produce when given the upstream repo. Used as a regression target: a fresh compile run should yield a semantically equivalent IR (modulo input_schema customizations). NOTE: this IR is image-deck-shaped (see ir_kind). It is NOT a template for non-image-deck skills — those need their own IR shape, validated by a separate hand-compile.",
   "ir_version": "0.1",
+  "ir_kind": "image-deck",
   "skill_meta": {
     "name": "ian-handdrawn-ppt",
     "display_name": "Ian Handdrawn PPT",

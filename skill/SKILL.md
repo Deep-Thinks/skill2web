@@ -15,7 +15,9 @@ If a skill cannot be reduced to `inputs → N LLM calls → templated render →
 
 ## Operating Rule
 
-This skill produces exactly **one `.html` file** plus **one `.README.md` file** per compile. No build pipeline, no bundler config, no `node_modules`, no CDN dependency at run-time. The `.html` opens in any modern browser; the end user pastes their own LLM/image API key on first open (stored in `localStorage`).
+This skill produces exactly **one `.html` file** plus **one `.README.md` file** per compile. The `.html` is **single-file source** — no build pipeline, no bundler config, no `node_modules`, no run-time CDN dependency. The end user pastes their own LLM/image API key on first open (stored in `localStorage`).
+
+**Important caveat (not optional)**: the `.html` should be **served over `http://`** (localhost / GitHub Pages / Surge / Cloudflare Pages — anything HTTP). Most modern browsers block `fetch()` from `file://` origins, and a number of provider CORS configurations treat `file://` differently from `http://`. The README emitted in Phase 6 must tell the user this; the compiler must not pretend "double-click and it works."
 
 The compile run-time **is** an LLM agent (this skill's caller). It is expected to:
 
@@ -106,14 +108,18 @@ For every `lib_deps` entry in the source skill (look at imports in any bundled s
 2. Add a new row to `lib-mapper.md` — but only if you can confidently confirm coverage. **USER GATE 3**: ask the user before adding new rows; lib-mapper.md is project canon.
 3. Ask the user if they'll provide a fallback (e.g. "this skill calls `python-magic`; we have no browser equivalent. Want to use a dumb MIME guess instead?").
 
-Also pick **providers** at this gate:
+Also pick **providers** at this gate. **All v0.1 defaults are `unverified` for browser CORS** (see `references/lib-mapper.md`). State this risk explicitly:
 
-| Choice | Default | Why |
-|---|---|---|
-| LLM provider | `https://api.deepseek.com/v1` + `deepseek-chat` | Cheap, OpenAI-compatible. StepFun (`https://api.stepfun.com/v1`) is a known working alternative. |
-| Image provider | `https://image.token-recyclebin.com/v1` + `gpt-image-2` | Best Chinese text rendering in tested options. Skip if `render_phase.kind != image-per-slide`. |
+| Choice | Default | Status | Why |
+|---|---|---|---|
+| LLM provider | `https://api.deepseek.com/v1` + `deepseek-chat` | unverified | Cheap, OpenAI-compatible. Used in sibling project's **Python backend** but not browser-tested. |
+| Image provider | `https://image.token-recyclebin.com/v1` + `gpt-image-2` | unverified | Best Chinese-text rendering in known options; chosen as hero-case default. **Browser CORS untested.** |
 
-Tell the user: "默认 provider 是 X。可以换吗？" Their answer locks into IR.browser_runtime.
+Word the gate to the user as:
+
+> 默认 provider 是 X / Y。但**两者的浏览器端 CORS 还没实测过**——只在 Python 后端跑过。第一次跑 hero case 时撞 CORS 错的概率不低；遇到了要么换 endpoint，要么本地 Python 反向代理一下。你接受这个风险，还是想现在切到一个已知 CORS 友好的 (OpenAI 官方 / Anthropic direct-browser)？
+
+Lock the user's answer into IR.browser_runtime.default_endpoints. If the user **does verify** a provider end-to-end during this compile, ask them to add an entry to the Verification log in `references/lib-mapper.md` before phase 6.
 
 ### Phase 5 — composer
 
@@ -165,9 +171,16 @@ Use these unless the user says otherwise:
 
 ## Status
 
-- v0.1 supports `render_phase.kind = image-per-slide` only (validated via the `ian-handdrawn-ppt` hero case).
-- v0.2 (planned): add `template-html` (markdown / report-style skills), `pptx-canvas` (slides with editable text overlay), and `frontend-design` integration for UI variety.
-- See `../DESIGN.md` for the broader plan and `../hero-cases/ian-handdrawn-ppt/LESSONS.md` for what's known to work.
+**v0.1 honest scope** (post-codex-review 2026-05-15):
+
+- ✅ Supports `ir_kind = "image-deck"` (validated via the `ian-handdrawn-ppt` hero case). The IR shape and the `base.html` template are both image-deck-shaped.
+- ❌ Does **not** yet support `template-html` (markdown / report skills), `pptx-canvas` (editable PPTX), `png-canvas` (single-image skills), or any agent-runtime kind. These are **speculation** until a second hand-compile of a non-image-deck skill validates that the IR generalizes. See `../TODO.md`.
+- ❌ Does **not** integrate `frontend-design` skill. UI is whatever `templates/base.html` provides. This is intentional per DESIGN.md; the v0.2 plan stays open but unscheduled.
+- ⚠️ The default provider endpoints (DeepSeek / StepFun / `image.token-recyclebin.com`) are listed in `lib-mapper.md` as `unverified` for browser CORS. The compile run **must** surface this risk to the user at gate 3. See `../TODO.md` for the verification work.
+
+The output `.html` is **single-file source** (no external CDN at runtime), but it needs to be served over `http://` — most modern browsers restrict `fetch()` from `file://` origins. Tell users to use `python3 -m http.server`, GitHub Pages, Surge, or Cloudflare Pages.
+
+See `../DESIGN.md` for the broader plan and `../hero-cases/ian-handdrawn-ppt/LESSONS.md` for what's known to work.
 
 ## Final response (when finishing a compile)
 

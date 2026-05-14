@@ -264,9 +264,25 @@ Compiled by [skill2web](<url>) from [<source-name>](<source-url>) (© <author> �
 
 ## How to use
 
-1. Open `<skill-name>.html` in a modern browser. Recommended: open via a local HTTP server (`python3 -m http.server` then open `http://localhost:8000/<skill-name>.html`). `file://` may cause fetch issues.
-2. Click the **设置 / Settings** button top-right. Paste your API keys. Save.
-3. Fill the form and click **生成 / Generate**.
+`<skill-name>.html` is **single-file source** but must be served over HTTP — `file://` is **not supported** (browsers restrict `fetch()` and some providers' CORS rejects `file://` origins). Pick one:
+
+```bash
+# Option A: local quick test
+cd <path-to-html>
+python3 -m http.server 8765
+# Then open http://localhost:8765/<skill-name>.html
+
+# Option B: deploy permanently
+# Upload <skill-name>.html anywhere that serves static files over HTTP:
+#  · GitHub Pages, Surge, Cloudflare Pages, Netlify, your own nginx.
+```
+
+Once served:
+
+1. Click **设置 / Settings** top-right. Paste your API keys. Save (stored in your browser's `localStorage`; never sent anywhere except to the providers you configure).
+2. Fill the form and click **生成 / Generate**.
+
+> ⚠️ **Provider CORS may not work on first try.** v0.1 ships with `unverified` provider defaults — meaning the maintainer believes they should work but has not browser-tested them end-to-end. If you get a CORS error in DevTools Console, either switch providers (the **设置** panel accepts any OpenAI-compatible endpoint) or run a 30-line local Python reverse proxy. PRs adding verified providers to `lib-mapper.md` are welcome.
 
 ## API keys
 
