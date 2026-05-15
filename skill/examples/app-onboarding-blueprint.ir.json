@@ -1,0 +1,189 @@
+{
+  "_comment": "IR for adamlyttleapps/claude-skill-app-onboarding-questionnaire (1.0k stars). v0.2.1 hero case validating §4.6 降级路径 — 原 skill 包含 5 phase, 末尾 Implementation Phase 写代码进用户项目 (tool-shape fs write), 不可编。降级方案: 砍 Implementation, IR 只覆盖前 4 phase (discovery + transformation + blueprint + screen content), 输出 onboarding 设计稿 markdown 给用户手工实施。Codebase exploration 用 user textarea 替代。",
+  "ir_version": "0.2",
+  "ir_kind": "template-html",
+  "degradation_log": [
+    {
+      "original_step": "Phase 1 Step 1: agent 读 CLAUDE.md / README / UI files / models / paywall code",
+      "replacement": "用户在 textarea 粘贴 app 描述、目标用户、核心 loop、是否有 paywall — 由 LLM 内部消化",
+      "loss": "失去从代码自动推断 features / permissions / 现有 paywall 的能力; 用户必须自己把 app 关键信息描述清楚"
+    },
+    {
+      "original_step": "Phase 5: Implementation — agent 写 SwiftUI / Compose / RN 代码进用户项目",
+      "replacement": "砍掉, IR 不覆盖该 phase; 输出停在 blueprint markdown (每屏文案 + 设计建议 + 视觉指引)",
+      "loss": "用户拿到 blueprint 之后需自己实现, skill 不再自动产代码。这是 fs-write 的本质限制, 浏览器无法绕过"
+    },
+    {
+      "original_step": "Multi-phase cross-conversation memory (RECALL / 各 phase 状态保存)",
+      "replacement": "单次会话完成: 用户一次填完表 → 一次 LLM 调用产出完整 blueprint。不做 phase 间状态保存",
+      "loss": "失去 '断点续做' 的体验; 但 hero case 测试表明 onboarding blueprint 不分 phase 也能一次出, LLM 在 system prompt 里串完 4 phase 逻辑"
+    }
+  ],
+  "skill_meta": {
+    "name": "app-onboarding-blueprint",
+    "display_name": "App Onboarding Blueprint · 高转化 questionnaire 流设计",
+    "description": "把你的 app 信息编译为一份高转化的 questionnaire-style onboarding 设计稿 (参照 Mob / Headspace / Duolingo / Noom 的模式)。⚠️ 降级版: 去掉了原 skill 的 codebase 探索和代码生成阶段, 只产出 blueprint markdown 供你手工实施。",
+    "source": {
+      "type": "github",
+      "url": "https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire",
+      "rev": "main",
+      "path_inside_repo": "."
+    },
+    "license": "MIT (assumed; verify in Phase 6)",
+    "author": "adamlyttleapps",
+    "author_links": ["https://github.com/adamlyttleapps"]
+  },
+  "input_schema": [
+    {
+      "key": "app_description",
+      "type": "textarea",
+      "label": "App 是干嘛的 (README 大意 / 主功能 / 核心 loop)",
+      "required": true,
+      "placeholder": "例: SwiftUI 的健身追踪 app。核心 loop: 拍餐盘照片 → AI 识别食物 → 自动记卡路里 → 周末看趋势。主要功能: 餐食拍照识别 / 卡路里目标 / 周报 / 社交分享。"
+    },
+    {
+      "key": "target_audience",
+      "type": "textarea",
+      "label": "目标用户 / 他们的痛点",
+      "required": true,
+      "placeholder": "例: 25-40 岁、想减重但记账 app 太麻烦的上班族。痛点: 没空手动输入每顿饭、忘了拍就忘了记、看到大段数字图表不爱看。"
+    },
+    {
+      "key": "transformation_before",
+      "type": "textarea",
+      "label": "BEFORE: 用户没用 app 时的状态/挫败",
+      "required": true,
+      "placeholder": "例: 在外面吃饭不知道热量, 用记账 app 写半天还不准, 周末看体重秤一直反弹, 觉得自己 '减肥永远失败'。"
+    },
+    {
+      "key": "transformation_after",
+      "type": "textarea",
+      "label": "AFTER: 用户用了 app 之后的状态/成果",
+      "required": true,
+      "placeholder": "例: 不知不觉每天都记上账, 一周看一次趋势, 体重每周稳定下降 0.3-0.5 公斤, 朋友问 '你最近瘦了' — 终于觉得这次能坚持下来。"
+    },
+    {
+      "key": "platform",
+      "type": "select",
+      "label": "平台 / 框架",
+      "required": true,
+      "options": [
+        {"value": "ios-swiftui",     "label": "iOS · SwiftUI"},
+        {"value": "ios-uikit",       "label": "iOS · UIKit"},
+        {"value": "android-compose", "label": "Android · Jetpack Compose"},
+        {"value": "react-native",    "label": "React Native"},
+        {"value": "flutter",         "label": "Flutter"},
+        {"value": "web-react",       "label": "Web · React"}
+      ],
+      "default": "ios-swiftui"
+    },
+    {
+      "key": "subscription_state",
+      "type": "select",
+      "label": "付费模式",
+      "required": true,
+      "options": [
+        {"value": "free-no-paywall",     "label": "完全免费 / 无 paywall"},
+        {"value": "subscription-trial",  "label": "订阅制 + 7 天试用"},
+        {"value": "subscription-direct", "label": "订阅制 / 无试用"},
+        {"value": "lifetime",            "label": "一次性买断"},
+        {"value": "freemium",            "label": "Freemium (核心免费, 高级功能付费)"}
+      ],
+      "default": "subscription-trial"
+    },
+    {
+      "key": "permissions",
+      "type": "text",
+      "label": "需要的系统权限 (用逗号分隔, 可选)",
+      "required": false,
+      "placeholder": "例: 通知, 相机, 健康数据"
+    }
+  ],
+  "llm_pipeline": [
+    {
+      "id": "blueprint",
+      "uses": [],
+      "model_hint": "deepseek-chat | step-3.5-flash | claude-haiku-4-5",
+      "temperature": 0.4,
+      "json_mode": "prompt-only",
+      "system_prompt_template": "你是一位 app onboarding 转化策略师, 熟悉 Mob / Headspace / Duolingo / Noom 这类高转化 onboarding 的形态。用户给你 app 信息和 BEFORE/AFTER 转化故事, 你要产出一份**可直接交给开发者实施**的 questionnaire-style onboarding 设计稿。\n\n【平台】{{input.platform}}\n【付费模式】{{input.subscription_state}}\n【需求权限】{{input.permissions}}\n【输出语言】中文 (代码片段除外)\n\n## 你要做的事 (原 skill 的 phase 1-4 一次性合并完成)\n\n1. **App 画像** — 把 app_description + target_audience 提炼为 3-5 个关键事实 (what / who / core loop / aha moment)\n2. **转化故事** — 用 BEFORE/AFTER 提炼 3-5 条 benefit statement, 每条必须: 动词开头 + 具体可测量 (不是 '节省时间' 而是 '每周省 2 小时') + 直击 BEFORE 痛点\n3. **Onboarding Blueprint** — 设计 8-13 屏的问卷流, 必须包含 (顺序): welcome → 1-3 个画像问题 → 1-2 个 commitment / goal 问题 → social proof (testimonial / 数据点) → benefit summary → permissions 请求 (按 permissions 字段) → paywall (按 subscription_state) → success state\n4. **每屏内容** — 给每屏写: 标题(< 12 字) + 副标题 / 选项(若是单选/多选屏) + UX 设计建议(1 行: 转化心理学解释)\n\n## 严格输出 JSON, 顶层 shape\n\n{\n  \"title\":    \"<app 名 + ' Onboarding Blueprint'>\",\n  \"abstract\": \"<一句话(<= 60 字): 这套 onboarding 的核心转化策略\",\n  \"sections\": [\n    {\"heading\": \"📋 App 画像\",          \"body_md\": \"<3-5 条 markdown 列表; 必含 what / who / core loop / aha moment>\"},\n    {\"heading\": \"🔄 转化故事 (BEFORE → AFTER)\", \"body_md\": \"<两段 markdown: '**BEFORE**: ...' + '**AFTER**: ...' + 列出 3-5 条 benefit statement>\"},\n    {\"heading\": \"🗺️ Onboarding 流程图\", \"body_md\": \"<markdown 列表, 每行一屏: '1. <屏标题>  — <角色, e.g. welcome/profile/commitment/social-proof/permission/paywall/success>'\"},\n    {\"heading\": \"📱 屏 1: <标题>\",       \"body_md\": \"<副标题/正文 + (若适用) 选项 markdown 列表 + > UX 笔记: ...>\"},\n    {\"heading\": \"📱 屏 2: <标题>\",       \"body_md\": \"同上结构\"}\n  ]\n}\n\n规则:\n1. ONLY JSON。若必须包, 用 ```json ... ```。\n2. sections 数量 = 3 + N (N 是屏数, 8-13)。前 3 个固定: 画像 / 转化故事 / 流程图; 后面每屏一个 section。\n3. 每屏 section 的 body_md 末尾**必须**用 `> UX 笔记: ...` 一行说明这屏为何这样设计 (转化心理学 / 心流 / 损失厌恶 / commitment 一致性 / 等等)。\n4. paywall 屏的 UX 笔记必须明确指出: trial vs direct 的钩子差异、第几屏 paywall 才转化高、price anchoring 怎么放。\n5. permissions 屏: 按 platform 给出符合该平台 UX guidelines 的请求时机 (iOS 要在用户已经看到 benefit 之后才弹原生 dialog)。\n6. 不要写代码, 这里只产设计稿。代码实施是用户自己的工作 (这是 §4.6 降级路径的固定边界)。",
+      "user_prompt_template": "App 描述:\n{{input.app_description}}\n\n目标用户/痛点:\n{{input.target_audience}}\n\nBEFORE:\n{{input.transformation_before}}\n\nAFTER:\n{{input.transformation_after}}\n\n按上述说明产出 blueprint。",
+      "expected_output_schema": {
+        "type": "object",
+        "required": ["title", "sections"],
+        "properties": {
+          "title":    { "type": "string" },
+          "abstract": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "minItems": 11,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "required": ["heading", "body_md"],
+              "properties": {
+                "heading": { "type": "string" },
+                "body_md": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "browser_runtime": {
+    "llm_adapter": "openai-chat-compat",
+    "image_adapter": null,
+    "default_endpoints": {
+      "llm": {
+        "base_url": "https://api.stepfun.com/v1",
+        "model": "step-3.5-flash"
+      }
+    },
+    "concurrency": 1,
+    "timeout_ms": {
+      "llm": 180000,
+      "image": 0
+    },
+    "retry": {
+      "llm": 0,
+      "image": 0
+    },
+    "extra_libs": []
+  },
+  "render": {
+    "output_form": "markdown",
+    "template_html": "",
+    "css_lock": "",
+    "data_binding": "$.steps.blueprint.output",
+    "sanitizer": "dompurify-strict",
+    "features": {
+      "toc": true,
+      "footnotes": false,
+      "syntax_highlight": false,
+      "print_css": true,
+      "export_pdf": false
+    }
+  },
+  "error_ux": {
+    "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+    "missing_image_key": "(本 skill 不需要图像 API)",
+    "llm_4xx": "LLM 调用被拒绝。常见原因: key 失效 / 余额不足 / 不支持该模型。",
+    "llm_5xx": "LLM 服务暂时不可用,过几秒再试。",
+    "llm_timeout": "LLM 响应超时(>180s)。reasoning 模型生成 13 屏 blueprint 可能慢, 可以换成 deepseek-chat 这种非 reasoning 模型加速。",
+    "image_4xx": "(N/A)",
+    "image_5xx": "(N/A)",
+    "image_timeout": "(N/A)",
+    "cors": "浏览器拒绝了跨域请求。stepfun / mimo / OpenAI 已实测 CORS 友好;若用 deepseek 撞 CORS 请换 base URL。",
+    "json_parse": "LLM 没返回有效 JSON。可能 sections 太多被 max_tokens 截断, 换更大的模型或减少屏数重试。",
+    "kind_unsupported": "此编译产物不支持当前操作。"
+  },
+  "attribution": {
+    "source_skill_link": "https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire",
+    "source_author": "adamlyttleapps",
+    "source_author_link": "https://github.com/adamlyttleapps",
+    "source_license": "MIT (assumed; verify in Phase 6)",
+    "source_license_text_file": "LICENSE",
+    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2.1 编译。源 skill: <a href='https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire'>adamlyttleapps/claude-skill-app-onboarding-questionnaire</a> · MIT。⚠️ <strong>降级版</strong> — 砍掉了原 skill 的 codebase 探索和代码生成阶段, 只产 blueprint markdown。详见编译产物的 README。"
+  }
+}
