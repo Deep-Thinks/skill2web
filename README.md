@@ -10,25 +10,64 @@ AI 从业者写了大量高质量 Claude Code skill（PPT、海报、菜谱、�
 
 适用范围：流程化 skill（输入 → 1-3 次 LLM 调用 → 模板渲染 → 输出）。多轮 agent 分支 / 不可拆 skill 由 compiler 主动拒绝。
 
-## 当前状态
+## 当前状态 (v0.2, 2026-05-15)
 
-- 设计文档：见 `DESIGN.md`
-- 第一周任务：**手动**把 `ian-handdrawn-ppt` 转成单文件 HTML（hero case），见 `hero-cases/ian-handdrawn-ppt/`
-- v0.1 compiler 代码：未开始（Week 1 末以前不写）
+- 设计文档: `DESIGN.md` (v0.1) + `DESIGN-v0.2.md` (v0.1 → v0.2 演化)
+- v0.2 编译器: 三步组装 (skeleton + block + adapter) — `python3 skill/compose.py <ir.json> <out.html>`
+- 支持三个 `ir_kind`:
+  - `image-deck` — 多张相关图 (例 `ian-handdrawn-ppt`)
+  - `template-html` — markdown / 报告输出 (例 `synthetic-essay-polisher`)
+  - `png-canvas` — 单张封面 / 海报 (例 `guizang-cover`)
+- v0.1 IR → v0.2 自动迁移: `python3 skill/migrate_v01_to_v02.py <v0.1.json> <v0.2.json>`
+- spike-gated (DESIGN §11): `pptx-canvas` / `data-table` 仅 schema 草案,等真实 skill 触发实装
 
 ## 项目结构
 
 ```
 skill2web/
 ├── README.md
-├── LICENSE                       # MIT
-├── DESIGN.md                     # 完整设计文档（office-hours 输出）
+├── LICENSE                            # MIT
+├── DESIGN.md                          # v0.1 设计文档
+├── DESIGN-v0.2.md                     # v0.2 演化文档 (本 release 实施依据)
+├── TODO.md                            # v0.2.x backlog
 ├── hero-cases/
-│   └── ian-handdrawn-ppt/        # 手工 hero case
-│       ├── index.html            # 单文件 HTML
-│       ├── LESSONS.md            # 手工过程的设计沉淀
-│       └── source-attribution.md # 原 skill 归属与 license
-└── (skill/ — v0.1 compiler 代码，未开始)
+│   ├── ian-handdrawn-ppt/             # v0.1 手工 hero case (image-deck)
+│   ├── ian-handdrawn-ppt-v0.2/        # v0.2 composer 自动重编 (回归基线)
+│   └── synthetic-essay-polisher/      # v0.2 Phase B 设计输入 (template-html)
+├── dist/                              # 编译产物
+│   ├── ian-handdrawn-ppt.html
+│   ├── synthetic-essay-polisher.html
+│   ├── guizang-cover.html
+│   └── nature-skills.REFUSAL.md       # v0.1 refusal 示例 (kind-not-yet-supported)
+└── skill/                             # v0.2 compiler
+    ├── SKILL.md                       # 主入口 (六阶段 + 四 user gate)
+    ├── compose.py                     # 三步组装 composer
+    ├── migrate_v01_to_v02.py          # v0.1 → v0.2 IR 迁移
+    ├── examples/
+    │   ├── ian-handdrawn-ppt.ir.v0.1.json   # 归档
+    │   ├── ian-handdrawn-ppt.ir.json        # v0.2
+    │   ├── synthetic-essay-polisher.ir.json # v0.2
+    │   └── guizang-cover.ir.json            # v0.2
+    ├── references/
+    │   ├── analyzer-checklist.md      # 9 step + 5 类新 refusal
+    │   ├── compiler-workflow.md       # 六阶段操作书
+    │   ├── ir-core.md                 # universal IR (8 字段)
+    │   ├── ir-kinds/
+    │   │   ├── image-deck.md
+    │   │   ├── template-html.md
+    │   │   └── png-canvas.md
+    │   ├── adapters.md                # API 调用契约
+    │   └── render-libs.md             # inline JS lib
+    └── templates/
+        ├── skeleton.html              # 通用骨架
+        ├── blocks/
+        │   ├── image-deck.html
+        │   ├── template-html.html
+        │   └── png-canvas.html
+        └── adapters/
+            ├── openai-chat-compat.js
+            ├── anthropic-chat.js
+            └── openai-images-compat.js
 ```
 
 ## 运行 hero case

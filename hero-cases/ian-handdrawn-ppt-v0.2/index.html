@@ -1,0 +1,1054 @@
+<!--
+  ============================================================
+  skill2web · skeleton.html — universal frame (v0.2)
+  ============================================================
+
+  Composer 三步组装:
+    1. 取本骨架为 frame
+    2. 按 ir_kind 选 blocks/<kind>.html, 替换 BLOCK:HEAD / BLOCK:UI / BLOCK:RENDER
+    3. 按 browser_runtime 选 adapters/*.js, inline 进 ADAPTER:LLM / ADAPTER:IMAGE
+
+  Placeholder 协议 (build-time substitution):
+    "{ {IR.X.Y|filter} }"     IR 字段, filter 同 v0.1:
+                                |raw  |html  |attr  |url  |js-string  |js-number
+                                |js-bool  |js-object  |js-array
+                                |js-bool-non-null
+    "{ {IR.input_schema|render-form-fields} }"
+                              展开为 <div class="form-row"> 块
+    "{ {IR.input_schema|js-spec} }"
+                              展开为 JS const 数组(field metadata)
+    "{ {IR.llm_pipeline|js-pipeline} }"
+                              展开为 JS const 数组,字符串字段已转 JS string literal
+    (示例语法用了空格转义以避免 composer 误捕)
+
+  Block 协议 (示例 marker 名以"<!- -"形式记录,实际写时去掉中间空格):
+    "<!- - ADAPTER:LLM - ->"    ... "<!- - ADAPTER:LLM_END - ->"
+    "<!- - ADAPTER:IMAGE - ->"  ... "<!- - ADAPTER:IMAGE_END - ->"
+    "<!- - BLOCK:HEAD - ->"     ... "<!- - BLOCK:HEAD_END - ->"     (kind-specific CSS)
+    "<!- - BLOCK:UI_SETTINGS - ->" ... "<!- - BLOCK:UI_SETTINGS_END - ->" (image-key 区块)
+    "<!- - BLOCK:UI - ->"       ... "<!- - BLOCK:UI_END - ->"       (kind-specific HTML)
+    "<!- - BLOCK:RENDER - ->"   ... "<!- - BLOCK:RENDER_END - ->"   (kind-specific JS)
+
+  Block 必须 export (定义) 一个全局 async 函数 `renderOutput()`, 由 pipeline runner
+  在所有 LLM step 完成后调用一次。`renderOutput()` 读 state.steps[*].output。
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ian Handdrawn PPT · 单文件网页版</title>
+  <style>
+    /* ===== reset & base ===== */
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",
+                  "Helvetica Neue",Helvetica,Arial,sans-serif;
+      background:#FBFAF5;color:#111;line-height:1.55;font-size:14px;min-height:100vh;
+    }
+    a{color:#3B6FB6;text-decoration:none}
+    a:hover{text-decoration:underline}
+    button{cursor:pointer;font:inherit}
+    input,textarea,select{font:inherit;color:inherit}
+
+    header{
+      padding:24px 32px 18px;border-bottom:1px solid #E5E0D5;background:#FBFAF5;
+      display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;
+      position:sticky;top:0;z-index:50;
+    }
+    header h1{margin:0;font-size:22px;font-weight:600;letter-spacing:.01em}
+    header .subtitle{font-size:12px;color:#5F5A50;margin-top:4px}
+    .btn-settings{
+      background:transparent;border:1px solid #C5BFB2;color:#5F5A50;
+      padding:6px 14px;border-radius:6px;font-size:12px;
+    }
+    .btn-settings:hover{background:#F2EEE4}
+
+    main{padding:24px 32px 64px;max-width:1200px;margin:0 auto}
+
+    section{
+      background:#FFF;border:1px solid #E5E0D5;border-radius:10px;
+      padding:24px 28px;margin-bottom:20px;box-shadow:0 1px 2px rgba(0,0,0,.02);
+    }
+    section h2{
+      margin:0 0 16px;font-size:16px;font-weight:600;
+      display:flex;align-items:center;gap:8px;
+    }
+    section h2 .step-num{
+      display:inline-block;width:22px;height:22px;background:#D9E8F6;
+      border-radius:50%;text-align:center;line-height:22px;font-size:12px;color:#3B6FB6;
+    }
+
+    .form-row{margin-bottom:14px}
+    .form-row label{display:block;font-size:12px;color:#5F5A50;margin-bottom:6px}
+    .form-row input[type="text"],.form-row input[type="password"],
+    .form-row input[type="number"],.form-row textarea,.form-row select{
+      width:100%;padding:8px 12px;border:1px solid #E5E0D5;border-radius:6px;
+      background:#FBFAF5;transition:border-color .15s;
+    }
+    .form-row textarea{min-height:160px;resize:vertical;font-family:inherit}
+    .form-row input:focus,.form-row textarea:focus,.form-row select:focus{
+      outline:none;border-color:#3B6FB6;background:#FFF;
+    }
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+    .btn-primary{
+      background:#3B6FB6;color:#FFF;border:none;padding:10px 24px;
+      border-radius:6px;font-size:14px;font-weight:500;
+    }
+    .btn-primary:hover{background:#2D5A99}
+    .btn-primary:disabled{background:#A8B5C7;cursor:not-allowed}
+    .btn-secondary{
+      background:#FFF;color:#5F5A50;border:1px solid #C5BFB2;
+      padding:8px 16px;border-radius:6px;font-size:13px;
+    }
+    .btn-secondary:hover{background:#F2EEE4}
+
+    #settings-panel{background:#FFF8E7;border-color:#F5DEB8}
+    #settings-panel h2 .step-num{background:#F5DEB8;color:#9C7A3B}
+    .key-section{margin-bottom:18px}
+    .key-section h3{margin:0 0 8px;font-size:13px;color:#9C7A3B}
+    details{margin-top:12px;font-size:12px}
+    details summary{cursor:pointer;color:#5F5A50;user-select:none}
+    details summary:hover{color:#3B6FB6}
+    details .key-help{
+      margin-top:8px;padding:12px 14px;background:#FFF;border-radius:6px;
+      line-height:1.6;color:#5F5A50;
+    }
+    details .key-help code{background:#F2EEE4;padding:1px 5px;border-radius:3px;font-size:11.5px}
+
+    #progress-section{display:none}
+    #progress-section.active{display:block}
+    .progress-step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;color:#5F5A50}
+    .progress-step .indicator{
+      width:18px;height:18px;border-radius:50%;background:#E5E0D5;color:transparent;
+      display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;
+    }
+    .progress-step.running .indicator{background:#3B6FB6;color:#FFF}
+    .progress-step.running .indicator::after{content:"…"}
+    .progress-step.done .indicator{background:#7CB342;color:#FFF}
+    .progress-step.done .indicator::after{content:"✓"}
+    .progress-step.fail .indicator{background:#D66F4D;color:#FFF}
+    .progress-step.fail .indicator::after{content:"!"}
+    .progress-step.running{color:#111;font-weight:500}
+    .progress-step.fail{color:#D66F4D}
+
+    #status-log{
+      margin-top:14px;padding:12px 14px;background:#FBFAF5;border:1px solid #E5E0D5;
+      border-radius:6px;font-family:"SF Mono","Monaco","Consolas",monospace;font-size:11.5px;
+      max-height:200px;overflow-y:auto;color:#5F5A50;white-space:pre-wrap;word-break:break-all;
+    }
+    #status-log .log-error{color:#D66F4D}
+    #status-log .log-success{color:#558B2F}
+
+    #results-section{display:none}
+    #results-section.active{display:block}
+    .blueprint-toggle{font-size:12px;color:#3B6FB6;cursor:pointer;margin-bottom:12px}
+    .blueprint-toggle:hover{text-decoration:underline}
+    #pipeline-blueprint{
+      display:none;background:#F8F6F0;border:1px solid #E5E0D5;border-radius:6px;
+      padding:14px;margin-bottom:18px;font-family:"SF Mono","Monaco","Consolas",monospace;
+      font-size:11.5px;max-height:300px;overflow-y:auto;white-space:pre-wrap;
+    }
+    #pipeline-blueprint.active{display:block}
+
+    footer{
+      padding:18px 32px 24px;color:#A8A29A;font-size:11.5px;
+      border-top:1px solid #E5E0D5;text-align:center;
+    }
+    footer a{color:#5F5A50}
+
+    .hint{color:#A8A29A;font-size:12px;margin-top:6px}
+    .error-banner{
+      background:#FDF4F0;border:1px solid #F5C7B6;color:#A85C44;
+      padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:12.5px;display:none;
+    }
+    .error-banner.active{display:block}
+
+    /* ===== BLOCK:HEAD CSS (kind-specific, injected by composer) ===== */
+    <!-- BLOCK:HEAD -->
+.slide-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.slide-card{
+  border:1px solid #E5E0D5;border-radius:8px;overflow:hidden;background:#FBFAF5;
+  display:flex;flex-direction:column;
+}
+.slide-card .slide-thumb{
+  aspect-ratio:16/9;background:#F2EEE4;display:flex;align-items:center;justify-content:center;
+  color:#A8A29A;font-size:12px;position:relative;overflow:hidden;
+}
+.slide-card.cover .slide-thumb{aspect-ratio:21/9}
+.slide-card .slide-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.slide-card .slide-info{padding:10px 12px;border-top:1px solid #E5E0D5}
+.slide-card .slide-title{
+  font-size:13px;font-weight:500;margin:0 0 3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.slide-card .slide-meta{font-size:11px;color:#A8A29A}
+.slide-card .slide-actions{padding:8px 12px;border-top:1px solid #E5E0D5;display:flex;gap:8px}
+.slide-card .slide-actions button{
+  flex:1;font-size:11px;padding:5px 8px;background:transparent;
+  border:1px solid #E5E0D5;color:#5F5A50;border-radius:4px;
+}
+.slide-card .slide-actions button:hover:not(:disabled){background:#F2EEE4}
+.slide-card .slide-actions button:disabled{opacity:.4;cursor:not-allowed}
+.slide-card.error{border-color:#F5C7B6}
+.slide-card.error .slide-thumb{background:#FDF4F0;color:#D66F4D}
+.slide-card.running .slide-thumb::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,#FFF8 50%,transparent);
+  animation:shimmer 1.6s infinite;
+}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+<!-- BLOCK:HEAD_END -->
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Ian Handdrawn PPT · 单文件网页版</h1>
+    <div class="subtitle">
+      Turn an article / Markdown / outline into a Chinese handdrawn technical PPT-style image deck. ·
+      上游 skill: <a href="https://github.com/helloianneo/ian-handdrawn-ppt" target="_blank">ian-handdrawn-ppt</a>
+      by <a href="https://github.com/helloianneo" target="_blank">Ian</a> ·
+      MIT ·
+      compiled by <a href="https://github.com/xuejia-mq/skill2web" target="_blank">skill2web</a>
+    </div>
+  </div>
+  <button class="btn-settings" id="btn-toggle-settings">设置</button>
+</header>
+
+<main>
+
+  <!-- ===== 设置面板 ===== -->
+  <section id="settings-panel">
+    <h2><span class="step-num">⚙</span>API 设置(仅存浏览器本地)</h2>
+    <div class="error-banner" id="settings-error"></div>
+
+    <div class="key-section">
+      <h3>① LLM 推理</h3>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="llm-key" placeholder="sk-xxx 或同等格式" autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="llm-model" value="deepseek-chat">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Base URL</label>
+        <input type="text" id="llm-base-url" value="https://api.deepseek.com/v1">
+      </div>
+    </div>
+
+    <!-- BLOCK:UI_SETTINGS -->
+<div class="key-section">
+  <h3>② 图像生成</h3>
+  <div class="form-grid">
+    <div class="form-row">
+      <label>API Key</label>
+      <input type="password" id="image-key" placeholder="sk-xxx" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label>Model</label>
+      <input type="text" id="image-model" value="gpt-image-2">
+    </div>
+  </div>
+  <div class="form-grid">
+    <div class="form-row">
+      <label>Base URL</label>
+      <input type="text" id="image-base-url" value="https://image.token-recyclebin.com/v1">
+    </div>
+    <div class="form-row">
+      <label>Endpoint 模式</label>
+      <select id="image-endpoint-mode">
+        <option value="generations">/images/generations</option>
+        <option value="edits">/images/edits(带空白参考图)</option>
+      </select>
+    </div>
+  </div>
+</div>
+<!-- BLOCK:UI_SETTINGS_END -->
+    <!--
+      上面这个 BLOCK:UI_SETTINGS 由 composer 替换为 image-key section(image-deck / png-canvas)
+      或留空(template-html)。详见 blocks/<kind>.html。
+    -->
+
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="btn-primary" id="btn-save-keys">保存到 localStorage</button>
+      <button class="btn-secondary" id="btn-clear-keys">清空</button>
+    </div>
+
+    <details>
+      <summary>怎么获取 key?</summary>
+      <div class="key-help">
+        <p>本编译产物默认指向 OpenAI 兼容 endpoint。任何 OpenAI 兼容服务都行(OpenAI、DeepSeek、StepFun、智谱、Anthropic 的 direct-browser-access 模式等)。</p>
+        <p>你的输入和生成的内容仅在浏览器和上面配置的 endpoint 之间流动,<strong>不经过 skill2web 作者的任何服务器</strong>。</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== 输入面板 ===== -->
+  <section id="input-section">
+    <h2><span class="step-num">1</span>输入</h2>
+    <div class="form-row"><label>文章 / Markdown / 大纲 *</label><textarea id="input-content" placeholder="粘贴文章或写主题"></textarea></div>
+    <div class="form-row"><label>目标读者（可选）</label><input type="text" id="input-audience" value="" placeholder="例：有基础的工程师 / 协会成员"></div>
+    <div class="form-row"><label>使用场景 *</label><select id="input-scenario"><option value="teaching" selected>教学课件</option><option value="explain">公众科普</option><option value="product">产品 / 方案说明</option><option value="share">分享 / 朋友圈配图</option><option value="report">汇报</option></select></div>
+    <div class="form-row"><label>页数 *</label><select id="input-length"><option value="5">5 页（短想法）</option><option value="8" selected>8 页（推荐）</option><option value="10">10 页</option><option value="12">12 页（一篇文章）</option></select></div>
+    <div class="form-row"><label>视觉组合 *</label><select id="input-output_style"><option value="body-only" selected>仅 body 16:9</option><option value="cover-plus-body">cover + body</option></select></div>
+    <div class="actions-row" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" id="btn-generate">开始生成</button>
+      <span class="hint" id="generate-hint">将顺序跑 LLM pipeline,然后渲染输出。</span>
+    </div>
+  </section>
+
+  <!-- ===== 进度面板 ===== -->
+  <section id="progress-section">
+    <h2><span class="step-num">2</span>进度</h2>
+    <div id="progress-steps"></div>
+    <div id="status-log"></div>
+  </section>
+
+  <!-- ===== 结果面板 ===== -->
+  <section id="results-section">
+    <h2><span class="step-num">3</span>结果</h2>
+    <div class="blueprint-toggle" id="blueprint-toggle">▸ 查看 / 隐藏 pipeline JSON</div>
+    <pre id="pipeline-blueprint"></pre>
+
+    <!-- BLOCK:UI -->
+<div class="slide-grid" id="slide-grid"></div>
+<div class="actions-row" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+  <button class="btn-secondary" id="btn-download-all">下载全部</button>
+  <button class="btn-secondary" id="btn-regenerate-failed">重试所有失败</button>
+  <button class="btn-secondary" id="btn-reset">从头开始</button>
+</div>
+<!-- BLOCK:UI_END -->
+
+  </section>
+
+</main>
+
+<footer>
+  本网页由 <a href='https://github.com/xuejia-mq/skill2web' target='_blank'>skill2web</a> 从 <a href='https://github.com/helloianneo/ian-handdrawn-ppt' target='_blank'>ian-handdrawn-ppt</a>（Ian · MIT）编译。你的输入内容和生成的图像仅在浏览器和你配置的 LLM / 图像供应商之间流动。
+</footer>
+
+<script>
+/* ============================================================
+   skill2web compiled output — runtime
+   Generated from skeleton.html · IR ir_version: 0.2
+   ============================================================ */
+
+/* ===== Input form spec (IR.input_schema) ===== */
+const INPUT_SCHEMA = [{"key": "content", "type": "textarea", "label": "文章 / Markdown / 大纲", "required": true}, {"key": "audience", "type": "text", "label": "目标读者（可选）", "required": false}, {"key": "scenario", "type": "select", "label": "使用场景", "required": true}, {"key": "length", "type": "select", "label": "页数", "required": true}, {"key": "output_style", "type": "select", "label": "视觉组合", "required": true}];
+
+/* ===== LLM pipeline (IR.llm_pipeline) ===== */
+const LLM_PIPELINE = [
+  {
+    id: `plan`,
+    model_hint: `deepseek-chat`,
+    temperature: 0.4,
+    json_mode: `prompt-only`,
+    system_prompt_template: `你是 Ian Handdrawn PPT skill 的拆解器。读用户的内容（文章 / Markdown / 大纲 / 主题），输出一个 deck spine 的 JSON，供后续图像生成器为每张 slide 生成中文手绘风技术 PPT 页面图像。
+
+输出严格 JSON，结构如下：
+{
+  "deck_type": "teaching | persuasive | report | product | knowledge-card",
+  "topic": "<主题>",
+  "audience": "<受众>",
+  "slides": [
+    {
+      "role": "cover | body",
+      "title": "<5-12 个汉字的短中文标题>",
+      "subtitle": "<可选 3-12 个汉字>",
+      "archetype": "cover-metaphor | single-concept | left-right-contrast | transformation-contrast | horizontal-process | circular-mechanism | branching-map | classification-map | matrix-table | main-metaphor | annotation | takeaway",
+      "main_point": "<一句话总结这一页的判断>",
+      "composition": "<一段英文，描述这一页中央示意图的具体布局：几个对象、左右还是流程、有什么手绘元素、用什么 pastel 颜色标记。不要描述边框/页码/纸张 —— 那些由 deck style lock 统一处理。>",
+      "required_text": ["<图里所有出现的中文文字，一项一行，每项 2-12 个字>"]
+    }
+  ]
+}
+
+规则：
+1. slide 数量必须恰好等于用户指定的页数。
+2. archetype 必须从给定列表里选。封面默认 cover-metaphor。
+3. 每页只有一个主要观点（main_point），不堆 bullet。
+4. required_text 必须短而精确，每项 ≤ 12 汉字，整页加起来 ≤ 6 项，避免出现 LLM 编出来的填充文字。
+5. 标题不要超过 12 个汉字。
+6. composition 必须用英文写，因为后续会送给图像模型。
+7. 不要输出 JSON 之外的任何文字，不要 markdown 代码块包裹。如果模型限制需要包裹，请用 \`\`\`json ... \`\`\`。`,
+    user_prompt_template: `请生成 deck spine。
+
+【场景】{{input.scenario}}
+【受众】{{input.audience}}
+【页数】{{input.length}}（{{input.output_style}}）
+
+【内容 / 大纲】
+{{input.content}}`,
+    uses: [],
+  }
+];
+
+/* ===== Render config (IR.render — kind-specific, opaque to skeleton) ===== */
+const RENDER_CONFIG = {
+  "static_assets": {
+    "style_lock": "Refined commercial Chinese handdrawn technical article/PPT illustration.\nComplete raster image on very light warm white paper, near #FBFAF5, with extremely subtle grain.\nNo full-page border and no rectangular frame unless explicitly requested.\nUpper-left small page number in handwritten style.\nCentered medium Chinese title with one pale blue handdrawn underline.\nSmall subtitle under title when needed.\nFor body pages, keep title size optically consistent across pages; do not enlarge short titles.\nFine black ink and pencil linework, delicate hatching, stable but slightly irregular.\nMuted pastel marker labels: pale blue, sage green, peach, lavender.\nSparse corner construction marks only: faint pale grey grid, dots, ruler ticks, measurement lines.\nGenerous negative space, calm premium teaching-note feeling.\nMostly small object-based diagrams; no more than one tiny person, placed far in a corner.\nProps should be blank or contain only simple line marks unless their text appears in Required text only.\nAvoid full-page border, yellow paper, beige paper, giant fonts, cheap poster look, childish doodles, many characters, thick marker strokes, dense bullets, corporate template style, shadows, gradients, neon, watermark, gibberish text, English filler.",
+    "role_locks": {
+      "cover": "Page role: cover image.\nCanvas: 21:9 ultra-wide.\nTitle may be medium-large but still elegant and restrained.\nMain metaphor occupies about 50-55% of page width.\nNo page number unless requested.",
+      "body": "Page role: body illustration.\nCanvas: 16:9.\nThis is not a cover page.\nTitle is medium and restrained, optically consistent with the other body pages.\nEven if the title is short, do not enlarge it.\nCentral diagram occupies about 50-60% of page width and 35-45% of page height."
+    },
+    "reference_clauses": [
+      "Match the approved article-illustration shell: near-white warm paper, no full-page border, upper-left small page number, centered restrained handwritten Chinese title, one pale blue underline, small subtitle beneath, sparse corner grid/dot construction marks, fine ink-and-pencil object drawings with delicate hatching, small refined central diagram, and large negative space. Keep the outer shell consistent across pages; only vary the central diagram layout according to the content."
+    ],
+    "archetypes": [
+      "cover-metaphor",
+      "single-concept",
+      "left-right-contrast",
+      "transformation-contrast",
+      "horizontal-process",
+      "circular-mechanism",
+      "branching-map",
+      "classification-map",
+      "matrix-table",
+      "main-metaphor",
+      "annotation",
+      "takeaway"
+    ],
+    "theme_tokens": {
+      "paper": "#FBFAF5",
+      "ink": "#111111",
+      "size_by_role": {
+        "cover": "1536x1024",
+        "body": "1536x1024"
+      },
+      "_note": "Upstream theme-tokens.json prefers 2520x1080 (21:9) for cover and 1920x1080 (16:9) for body. gpt-image-2 does not natively support those — 1536x1024 (~3:2) is the closest landscape. v0.2 may add client-side canvas crop to true 21:9."
+    }
+  },
+  "iterator": "$.steps.plan.output.slides",
+  "per_item": {
+    "prompt_template": "Use case: Chinese handdrawn technical article/PPT visual.\nAsset type: one complete Chinese handdrawn technical PPT page image, final raster page.\nCreate page {{item.idx}}/{{total}} of a coherent deck.\nPage number text exactly: {{item.idx}} / {{total}}\n\n{{static_assets.role_locks.body}}\n\nTitle exactly: {{item.title}}\n{{#item.subtitle_block}}Subtitle exactly: {{item.subtitle}}{{/item.subtitle_block}}\nArchetype: {{item.archetype}}\nMain point: {{item.main_point}}\n\nApply the deck style lock:\n{{static_assets.style_lock}}\n\nReference match clause:\n{{static_assets.reference_clauses.0}}\n\nComposition:\n{{item.composition}}\n\nRequired text only:\n{{#item.required_text}}- {{.}}\n{{/item.required_text}}\n\nAvoid:\nfull-page border, yellow paper, beige paper, oversized central objects, oversized body-page title, heavy bottom boxes, extra text, invented micro-labels, gibberish, English, watermark, crowded composition, many people, childish cartoons, thick outlines, saturated colors, corporate template look.",
+    "size_by_role": {
+      "cover": "1536x1024",
+      "body": "1536x1024"
+    },
+    "api": "openai-images-compat",
+    "endpoint_mode": "generations"
+  }
+};
+
+/* ===== Runtime config ===== */
+const IR_KIND          = `image-deck`;
+const LLM_TIMEOUT_MS   = 120000;
+const IMAGE_TIMEOUT_MS = 180000;
+const IMAGE_RETRY      = 1;
+const IMAGE_CONCURRENCY= 3;
+const NEEDS_IMAGE      = true;
+
+/* ===== Error UX copy ===== */
+const ERROR_UX = {
+  "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+  "missing_image_key": "请先在 [设置] 里填图像 API Key。",
+  "llm_4xx": "LLM 调用被拒绝。常见原因：key 失效 / 余额不足 / 不支持该模型。",
+  "llm_5xx": "LLM 服务暂时不可用，过几秒再试。",
+  "llm_timeout": "LLM 响应超时（>120s）。检查网络，或换 base_url。",
+  "image_4xx": "图像 API 调用失败。可能是 endpoint 不支持当前 mode（/generations vs /edits）。试试在 [设置] 切换。",
+  "image_5xx": "图像服务繁忙，会自动重试一次。",
+  "image_timeout": "图像生成超时（>180s）。点这一张的 [重试]。",
+  "cors": "浏览器拒绝了跨域请求。这个 endpoint 可能不允许从网页直接调用 —— 你需要换一个 CORS 友好的 endpoint，或起一个本地代理。",
+  "json_parse": "LLM 没返回有效 JSON。点 [看 prompt] 查看，或换更强的模型重试。"
+};
+
+/* ===== localStorage key (per-skill scoped) ===== */
+const LS_KEY = "skill2web__" + `ian-handdrawn-ppt` + "__settings__v2";
+
+/* ===== Default endpoints ===== */
+const DEFAULT_ENDPOINTS = {
+  "llm": {
+    "base_url": "https://api.deepseek.com/v1",
+    "model": "deepseek-chat"
+  },
+  "image": {
+    "base_url": "https://image.token-recyclebin.com/v1",
+    "model": "gpt-image-2"
+  }
+};
+
+/* ============================================================
+   --- runtime below this line is skill-agnostic ---
+   ============================================================ */
+
+const state = {
+  settings: null,
+  steps: {},          // { <step_id>: { raw: "...", output: { ... } } }
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadSettings();
+  bindUI();
+  if (!state.settings || !state.settings.llmKey || (NEEDS_IMAGE && !state.settings.imageKey)) {
+    document.getElementById("settings-panel").style.display = "block";
+  }
+});
+
+function bindUI() {
+  document.getElementById("btn-toggle-settings").onclick = () => {
+    const p = document.getElementById("settings-panel");
+    p.style.display = (p.style.display === "none") ? "block" : "none";
+  };
+  document.getElementById("btn-save-keys").onclick = saveSettings;
+  document.getElementById("btn-clear-keys").onclick = clearSettings;
+  document.getElementById("btn-generate").onclick = startGenerate;
+  document.getElementById("blueprint-toggle").onclick = () => {
+    document.getElementById("pipeline-blueprint").classList.toggle("active");
+  };
+}
+
+function resetUi() {
+  document.getElementById("progress-section").classList.remove("active");
+  document.getElementById("results-section").classList.remove("active");
+  state.steps = {};
+  document.getElementById("status-log").textContent = "";
+  document.getElementById("progress-steps").innerHTML = "";
+}
+
+/* ===== settings ===== */
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    state.settings = s;
+    setIfExists("llm-key",      s.llmKey || "");
+    setIfExists("llm-base-url", s.llmBaseUrl || DEFAULT_ENDPOINTS.llm.base_url);
+    setIfExists("llm-model",    s.llmModel || DEFAULT_ENDPOINTS.llm.model);
+    if (NEEDS_IMAGE) {
+      setIfExists("image-key",          s.imageKey || "");
+      setIfExists("image-base-url",     s.imageBaseUrl || (DEFAULT_ENDPOINTS.image && DEFAULT_ENDPOINTS.image.base_url) || "");
+      setIfExists("image-model",        s.imageModel || (DEFAULT_ENDPOINTS.image && DEFAULT_ENDPOINTS.image.model) || "");
+      setIfExists("image-endpoint-mode",s.imageEndpointMode || (RENDER_CONFIG.per_item && RENDER_CONFIG.per_item.endpoint_mode) || (RENDER_CONFIG.endpoint_mode) || "generations");
+    }
+  } catch (e) { console.warn("loadSettings", e); }
+}
+function setIfExists(id, val) { const el = document.getElementById(id); if (!el) return; el.value = val; }
+
+function saveSettings() {
+  const s = {
+    llmKey:       document.getElementById("llm-key").value.trim(),
+    llmBaseUrl:   document.getElementById("llm-base-url").value.trim().replace(/\/+$/,""),
+    llmModel:     document.getElementById("llm-model").value.trim(),
+  };
+  if (NEEDS_IMAGE) {
+    s.imageKey          = (document.getElementById("image-key") || {value: ""}).value.trim();
+    s.imageBaseUrl      = (document.getElementById("image-base-url") || {value: ""}).value.trim().replace(/\/+$/,"");
+    s.imageModel        = (document.getElementById("image-model") || {value: ""}).value.trim();
+    s.imageEndpointMode = (document.getElementById("image-endpoint-mode") || {value: "generations"}).value;
+  }
+  const errors = [];
+  if (!s.llmKey)     errors.push("LLM API Key 不能为空");
+  if (!s.llmBaseUrl) errors.push("LLM Base URL 不能为空");
+  if (NEEDS_IMAGE && !s.imageKey)     errors.push("图像 API Key 不能为空");
+  if (NEEDS_IMAGE && !s.imageBaseUrl) errors.push("图像 Base URL 不能为空");
+  const err = document.getElementById("settings-error");
+  if (errors.length) { err.textContent = errors.join("; "); err.classList.add("active"); return; }
+  err.classList.remove("active");
+  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  state.settings = s;
+  const btn = document.getElementById("btn-save-keys");
+  const orig = btn.textContent;
+  btn.textContent = "✓ 已保存"; setTimeout(() => btn.textContent = orig, 1200);
+}
+function clearSettings() {
+  if (!confirm("确认清空所有 API 设置?")) return;
+  localStorage.removeItem(LS_KEY);
+  ["llm-key","image-key"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
+  state.settings = null;
+}
+
+/* ===== logging ===== */
+function log(msg, kind) {
+  const el = document.getElementById("status-log");
+  const ts = new Date().toLocaleTimeString();
+  const cls = kind ? ' class="log-' + kind + '"' : "";
+  el.innerHTML += "<span" + cls + ">[" + ts + "] " + escapeHtml(msg) + "</span>\n";
+  el.scrollTop = el.scrollHeight;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+/* ===== JSONPath-lite: supports "$.field.sub.field" only (no [n] indexing) ===== */
+function jsonpathLite(obj, path) {
+  if (!path || path === "$") return obj;
+  const parts = path.replace(/^\$\.?/, "").split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur == null) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+/* ===== Mustache-lite =====
+   {{key}}, {{nested.key}}, {{#list}}body{{/list}} (where body has {{.}} or {{nested}})
+   Special: {{static_assets.role_locks[item.role]}} dynamic-key dereference.
+   Context shape: { input, steps, item, total, static_assets, ... }                  */
+function mustacheLite(template, ctx) {
+  if (template == null) return "";
+  // {{#list}}body{{/list}}
+  template = template.replace(/{{#([\w.]+)}}([\s\S]*?){{\/\1}}/g, (m, key, body) => {
+    const arr = lookupCtx(ctx, key);
+    if (!Array.isArray(arr)) return "";
+    return arr.map(item => {
+      const innerCtx = Object.assign({}, ctx, {".": item});
+      // {{.}} references current scalar; {{<field>}} keeps outer ctx + scalar binding
+      let rendered = body.replace(/{{\.}}/g, escapeForPrompt(item));
+      rendered = rendered.replace(/{{([\w.]+)}}/g, (mm, k) => {
+        const v = lookupCtx(innerCtx, k);
+        return v == null ? "" : escapeForPrompt(v);
+      });
+      return rendered;
+    }).join("");
+  });
+  // {{path[item.key]}}  dynamic-key dereference (one level)
+  template = template.replace(/{{([\w.]+)\[([\w.]+)\]}}/g, (m, base, dynKey) => {
+    const obj = lookupCtx(ctx, base);
+    const k   = lookupCtx(ctx, dynKey);
+    if (obj == null || k == null) return "";
+    return escapeForPrompt(obj[k] != null ? obj[k] : "");
+  });
+  // {{key}} or {{nested.key}}
+  template = template.replace(/{{([\w.]+)}}/g, (m, key) => {
+    const v = lookupCtx(ctx, key);
+    return v == null ? "" : escapeForPrompt(v);
+  });
+  return template;
+}
+function lookupCtx(ctx, dotted) {
+  return dotted.split(".").reduce((o, k) => (o == null ? o : o[k]), ctx);
+}
+function escapeForPrompt(v) { return (typeof v === "string") ? v : String(v); }
+
+/* ===== JSON extract (LLM output may have prose / fences around it) ===== */
+function extractJson(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) {}
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) { try { return JSON.parse(fence[1]); } catch (e) {} }
+  const start = text.indexOf("{"), end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)); } catch (e) {} }
+  return null;
+}
+
+/* ===== form value collection ===== */
+function collectFormValues() {
+  const out = {};
+  for (const f of INPUT_SCHEMA) {
+    const el = document.getElementById("input-" + f.key);
+    if (!el) continue;
+    let v = el.value;
+    if (f.type === "number") v = parseFloat(v);
+    out[f.key] = v;
+  }
+  return out;
+}
+
+/* ===== progress tracker ===== */
+function renderProgressSteps() {
+  const host = document.getElementById("progress-steps");
+  host.innerHTML = "";
+  for (const step of LLM_PIPELINE) {
+    host.insertAdjacentHTML("beforeend",
+      '<div class="progress-step" id="ps-' + step.id + '">'
+      + '<span class="indicator"></span><span class="label">LLM: ' + escapeHtml(step.id) + '</span></div>');
+  }
+  host.insertAdjacentHTML("beforeend",
+    '<div class="progress-step" id="ps-render">'
+    + '<span class="indicator"></span><span class="label">渲染输出</span></div>');
+}
+function markStep(id, kind) {
+  const el = document.getElementById(id); if (!el) return;
+  el.classList.remove("running","done","fail");
+  el.classList.add(kind);
+}
+
+/* ===== ADAPTER:LLM (composer-injected callLLM definition) ===== */
+<!-- ADAPTER:LLM -->
+/* skill2web adapter: openai-chat-compat
+   Wraps OpenAI / DeepSeek / StepFun / 智谱 等 chat completions.
+   Composer inlines this verbatim into the output HTML's <script>.
+
+   Required globals (provided by skeleton runtime):
+     state.settings.{llmKey, llmBaseUrl, llmModel}
+     LLM_TIMEOUT_MS
+     ERROR_UX
+
+   Caller passes the step's `temperature` and `json_mode` from llm_pipeline.
+*/
+async function callLLM(messages, opts) {
+  const s = state.settings;
+  const url = s.llmBaseUrl + "/chat/completions";
+  const body = {
+    model: s.llmModel,
+    messages,
+    temperature: (opts && opts.temperature != null) ? opts.temperature : 0.4,
+  };
+  if (opts && opts.json_mode === "response-format") {
+    body.response_format = { type: "json_object" };
+  }
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + s.llmKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      const msg = (resp.status >= 400 && resp.status < 500) ? ERROR_UX.llm_4xx : ERROR_UX.llm_5xx;
+      throw new Error(`LLM ${resp.status}: ${msg} | ${t.slice(0, 200)}`);
+    }
+    const j = await resp.json();
+    return j.choices?.[0]?.message?.content || "";
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(ERROR_UX.llm_timeout);
+    throw e;
+  } finally { clearTimeout(tid); }
+}
+
+<!-- ADAPTER:LLM_END -->
+
+/* ===== ADAPTER:IMAGE (composer-injected callImageAPI; absent for non-image kinds) ===== */
+<!-- ADAPTER:IMAGE -->
+/* skill2web adapter: openai-images-compat
+   Wraps OpenAI / 兼容 endpoint /v1/images/generations 与 /v1/images/edits.
+   Composer inlines this verbatim into the output HTML's <script>.
+
+   Required globals (provided by skeleton runtime):
+     state.settings.{imageKey, imageBaseUrl, imageModel, imageEndpointMode}
+     IMAGE_TIMEOUT_MS
+     ERROR_UX
+*/
+async function callImageAPI(prompt, size, defaultEndpointMode) {
+  const s = state.settings;
+  const mode = s.imageEndpointMode || defaultEndpointMode || "generations";
+  if (mode === "generations") return callImageGenerations(prompt, size);
+  return callImageEdits(prompt, size);
+}
+
+async function callImageGenerations(prompt, size) {
+  const s = state.settings;
+  const url = s.imageBaseUrl + "/images/generations";
+  const body = { model: s.imageModel, prompt, n: 1, size, response_format: "b64_json" };
+  return await imageFetch(url, body, true);
+}
+
+async function callImageEdits(prompt, size) {
+  const s = state.settings;
+  const url = s.imageBaseUrl + "/images/edits";
+  const [w, h] = size.split("x").map(n => parseInt(n, 10));
+  const blank = await makeBlankPng(w, h);
+  const fd = new FormData();
+  fd.append("model", s.imageModel);
+  fd.append("prompt", prompt);
+  fd.append("size", size);
+  fd.append("n", "1");
+  fd.append("image", blank, "blank.png");
+  return await imageFetch(url, fd, false);
+}
+
+async function imageFetch(url, body, isJson) {
+  const s = state.settings;
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), IMAGE_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: isJson
+        ? { "Authorization": "Bearer " + s.imageKey, "Content-Type": "application/json" }
+        : { "Authorization": "Bearer " + s.imageKey },
+      body: isJson ? JSON.stringify(body) : body,
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      const msg = (resp.status >= 400 && resp.status < 500) ? ERROR_UX.image_4xx : ERROR_UX.image_5xx;
+      throw new Error(`image ${resp.status}: ${msg} | ${t.slice(0, 200)}`);
+    }
+    const j = await resp.json();
+    const item = j.data?.[0];
+    if (!item) throw new Error("响应缺 data[0]");
+    if (item.b64_json) return item.b64_json;
+    if (item.url) {
+      const ir = await fetch(item.url); const blob = await ir.blob();
+      return await blobToBase64(blob);
+    }
+    throw new Error("响应缺 b64_json/url");
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(ERROR_UX.image_timeout);
+    throw e;
+  } finally { clearTimeout(tid); }
+}
+
+function makeBlankPng(w, h) {
+  return new Promise((resolve) => {
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#FBFAF5"; ctx.fillRect(0, 0, w, h);
+    c.toBlob(b => resolve(b), "image/png");
+  });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const s = String(r.result); const i = s.indexOf(","); resolve(i >= 0 ? s.slice(i + 1) : s); };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+<!-- ADAPTER:IMAGE_END -->
+
+/* ===== concurrency helper (for image-deck) ===== */
+async function runWithConcurrency(items, n, worker) {
+  const queue = items.slice();
+  const runners = new Array(Math.min(n, queue.length)).fill(0).map(async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      try { await worker(item); } catch (e) {}
+    }
+  });
+  await Promise.all(runners);
+}
+
+/* ===== pipeline runner ===== */
+async function runLlmStep(step, inputValues) {
+  const ctx = { input: inputValues, steps: state.steps };
+  const sys = mustacheLite(step.system_prompt_template, ctx);
+  const usr = mustacheLite(step.user_prompt_template, ctx);
+  const messages = [];
+  if (sys) messages.push({ role: "system", content: sys });
+  messages.push({ role: "user", content: usr });
+  const raw = await callLLM(messages, { temperature: step.temperature, json_mode: step.json_mode });
+  let output;
+  if (step.json_mode === "off") {
+    output = { text: raw };
+  } else {
+    output = extractJson(raw);
+    if (!output) {
+      throw new Error(ERROR_UX.json_parse + "\n原始片段: " + raw.slice(0, 200));
+    }
+  }
+  state.steps[step.id] = { raw: raw, output: output };
+  return output;
+}
+
+async function startGenerate() {
+  if (!state.settings || !state.settings.llmKey || (NEEDS_IMAGE && !state.settings.imageKey)) {
+    alert(ERROR_UX.missing_llm_key || "请先在 [设置] 里填好 API key。");
+    document.getElementById("settings-panel").style.display = "block";
+    return;
+  }
+  const inputValues = collectFormValues();
+  const missing = INPUT_SCHEMA.filter(f => f.required && (inputValues[f.key] === undefined || inputValues[f.key] === ""));
+  if (missing.length) { alert("请填写: " + missing.map(f => f.label).join("、")); return; }
+
+  document.getElementById("btn-generate").disabled = true;
+  document.getElementById("progress-section").classList.add("active");
+  document.getElementById("results-section").classList.remove("active");
+  document.getElementById("status-log").textContent = "";
+  renderProgressSteps();
+
+  try {
+    for (const step of LLM_PIPELINE) {
+      markStep("ps-" + step.id, "running");
+      log("step [" + step.id + "] 调 LLM ...");
+      try {
+        await runLlmStep(step, inputValues);
+        markStep("ps-" + step.id, "done");
+        log("step [" + step.id + "] 完成", "success");
+      } catch (e) {
+        markStep("ps-" + step.id, "fail");
+        log("step [" + step.id + "] 失败: " + e.message, "error");
+        throw e;
+      }
+    }
+    document.getElementById("pipeline-blueprint").textContent = JSON.stringify(state.steps, null, 2);
+
+    markStep("ps-render", "running");
+    document.getElementById("results-section").classList.add("active");
+    await renderOutput();   /* defined by BLOCK:RENDER */
+    markStep("ps-render", "done");
+    log("全部完成", "success");
+  } catch (err) {
+    log("致命错误: " + err.message, "error");
+    console.error(err);
+  } finally {
+    document.getElementById("btn-generate").disabled = false;
+  }
+}
+
+/* ===== BLOCK:RENDER (composer-injected; defines async renderOutput()) ===== */
+<!-- BLOCK:RENDER -->
+const __slides = { items: [] };
+
+async function renderOutput() {
+  document.getElementById("btn-download-all").onclick = downloadAllImages;
+  document.getElementById("btn-regenerate-failed").onclick = retryFailedSlides;
+  document.getElementById("btn-reset").onclick = () => {
+    resetUi();   /* skeleton-defined */
+    __slides.items = [];
+    document.getElementById("slide-grid").innerHTML = "";
+  };
+
+  // 取 iterator (e.g. "$.steps.plan.output.slides") -> 数组
+  const iterArr = jsonpathLite({ steps: state.steps }, RENDER_CONFIG.iterator);
+  if (!Array.isArray(iterArr)) {
+    throw new Error("LLM pipeline 输出缺少 iterator 数组: " + RENDER_CONFIG.iterator);
+  }
+  log("spine 完成, " + iterArr.length + " 项", "success");
+  initSlideCards(iterArr);
+  await generateAllImages();
+  const okCount = __slides.items.filter(s => s.status === "done").length;
+  const failCount = __slides.items.filter(s => s.status === "fail").length;
+  if (failCount > 0) log(okCount + " 成 / " + failCount + " 失败", "error");
+  else log("完成 " + okCount + " 项", "success");
+}
+
+function initSlideCards(items) {
+  __slides.items = items.map((s, i) => Object.assign({}, s, {
+    idx: i + 1,
+    role: s.role || "body",
+    status: "pending",
+    b64: null, error: null, promptText: "",
+  }));
+  const grid = document.getElementById("slide-grid");
+  grid.innerHTML = "";
+  __slides.items.forEach(s => grid.appendChild(renderSlideCard(s)));
+}
+
+function renderSlideCard(slide) {
+  const card = document.createElement("div");
+  card.className = "slide-card " + slide.role + " " + slide.status;
+  card.dataset.idx = slide.idx;
+  card.innerHTML = ''
+    + '<div class="slide-thumb" data-thumb><span data-thumb-text>等待中</span></div>'
+    + '<div class="slide-info">'
+    +   '<div class="slide-title">' + escapeHtml(slide.idx + ". " + (slide.title || "")) + '</div>'
+    +   '<div class="slide-meta">' + escapeHtml(slide.archetype || "") + ' · ' + slide.role + '</div>'
+    + '</div>'
+    + '<div class="slide-actions">'
+    +   '<button data-act="download" disabled>下载</button>'
+    +   '<button data-act="retry">重试</button>'
+    +   '<button data-act="prompt">看 prompt</button>'
+    + '</div>';
+  card.querySelector('[data-act="download"]').onclick = () => downloadOne(slide.idx);
+  card.querySelector('[data-act="retry"]').onclick    = () => retryOne(slide.idx);
+  card.querySelector('[data-act="prompt"]').onclick   = () => showPrompt(slide.idx);
+  return card;
+}
+
+function updateSlideCard(slide) {
+  const card = document.querySelector('.slide-card[data-idx="' + slide.idx + '"]');
+  if (!card) return;
+  card.className = "slide-card " + slide.role + " " + slide.status;
+  const thumb = card.querySelector("[data-thumb]");
+  if (slide.status === "done" && slide.b64) {
+    thumb.innerHTML = '<img alt="' + escapeHtml(slide.title || "") + '" src="data:image/png;base64,' + slide.b64 + '">';
+  } else if (slide.status === "fail") {
+    thumb.innerHTML = '<span>失败: ' + escapeHtml((slide.error || "").slice(0, 80)) + '</span>';
+  } else if (slide.status === "running") {
+    thumb.innerHTML = '<span>生成中…</span>';
+  } else {
+    thumb.innerHTML = '<span>等待中</span>';
+  }
+  card.querySelector('[data-act="download"]').disabled = !(slide.status === "done" && slide.b64);
+}
+
+async function generateAllImages() {
+  const queue = __slides.items.filter(s => s.status !== "done").map(s => s.idx);
+  await runWithConcurrency(queue, IMAGE_CONCURRENCY, processSlide);
+}
+
+async function processSlide(idx) {
+  const slide = __slides.items[idx - 1];
+  slide.status = "running"; slide.error = null;
+  updateSlideCard(slide);
+
+  const total = __slides.items.length;
+  const promptCtx = {
+    item: slide,
+    total: total,
+    static_assets: RENDER_CONFIG.static_assets,
+  };
+  const promptText = mustacheLite(RENDER_CONFIG.per_item.prompt_template, promptCtx);
+  slide.promptText = promptText;
+
+  let lastErr;
+  for (let attempt = 0; attempt <= IMAGE_RETRY; attempt++) {
+    try {
+      log("[#" + idx + "] " + (attempt === 0 ? "首次" : "重试 " + attempt));
+      const sizeMap = (RENDER_CONFIG.per_item && RENDER_CONFIG.per_item.size_by_role) || {};
+      const size = sizeMap[slide.role] || "1536x1024";
+      const b64 = await callImageAPI(promptText, size, RENDER_CONFIG.per_item.endpoint_mode);
+      slide.b64 = b64; slide.status = "done";
+      updateSlideCard(slide);
+      log("[#" + idx + "] 完成", "success");
+      return;
+    } catch (e) {
+      lastErr = e;
+      log("[#" + idx + "] 失败: " + e.message, "error");
+    }
+  }
+  slide.status = "fail"; slide.error = lastErr ? lastErr.message : "未知";
+  updateSlideCard(slide);
+}
+
+function downloadOne(idx) {
+  const slide = __slides.items[idx - 1];
+  if (!slide || !slide.b64) return;
+  const fn = "slide-" + String(idx).padStart(2,"0") + "-" + sanitize(slide.title) + ".png";
+  const a = document.createElement("a");
+  a.href = "data:image/png;base64," + slide.b64; a.download = fn;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function sanitize(s) { return String(s || "untitled").replace(/[\\\/:*?"<>|\s]+/g, "_").slice(0, 40); }
+
+async function downloadAllImages() {
+  const dones = __slides.items.filter(s => s.status === "done" && s.b64);
+  if (!dones.length) { alert("还没成功生成"); return; }
+  for (const s of dones) { downloadOne(s.idx); await new Promise(r => setTimeout(r, 200)); }
+}
+
+async function retryOne(idx) {
+  const slide = __slides.items[idx - 1];
+  if (!slide) return;
+  slide.status = "pending"; updateSlideCard(slide);
+  await processSlide(idx);
+}
+
+async function retryFailedSlides() {
+  const failed = __slides.items.filter(s => s.status === "fail").map(s => s.idx);
+  if (!failed.length) { alert("没有失败"); return; }
+  for (const idx of failed) __slides.items[idx - 1].status = "pending";
+  failed.forEach(idx => updateSlideCard(__slides.items[idx - 1]));
+  await runWithConcurrency(failed, IMAGE_CONCURRENCY, processSlide);
+}
+
+function showPrompt(idx) {
+  const slide = __slides.items[idx - 1];
+  if (!slide || !slide.promptText) { alert("还没拼好 prompt"); return; }
+  const w = window.open("", "_blank");
+  if (!w) { alert(slide.promptText); return; }
+  w.document.write('<pre style="font:13px ui-monospace,monospace;padding:24px;white-space:pre-wrap">' + escapeHtml(slide.promptText) + '</pre>');
+}
+<!-- BLOCK:RENDER_END -->
+
+</script>
+</body>
+</html>

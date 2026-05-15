@@ -1,0 +1,145 @@
+{
+  "_comment": "IR for synthetic-essay-polisher (Hero Case 2 / Phase B reference). template-html shape; single-step LLM pipeline; sanitizer=dompurify-strict; print_css=true. Used to validate Phase B composer output is semantically equivalent to the hand-written hero case.",
+  "ir_version": "0.2",
+  "ir_kind": "template-html",
+  "skill_meta": {
+    "name": "synthetic-essay-polisher",
+    "display_name": "长文润色 (合成)",
+    "description": "把粗稿润色为有结构的 markdown 文章。合成 hero case 用于 v0.2 Phase B 设计验证。",
+    "source": {
+      "type": "local",
+      "url": "https://github.com/xuejia-mq/skill2web/tree/main/hero-cases/synthetic-essay-polisher",
+      "rev": "main",
+      "path_inside_repo": "hero-cases/synthetic-essay-polisher"
+    },
+    "license": "MIT",
+    "author": "skill2web",
+    "author_links": ["https://github.com/xuejia-mq/skill2web"]
+  },
+  "input_schema": [
+    {
+      "key": "original_text",
+      "type": "textarea",
+      "label": "原文 / 草稿",
+      "required": true,
+      "placeholder": "粘贴粗稿,或写主题大纲。"
+    },
+    {
+      "key": "audience",
+      "type": "text",
+      "label": "目标读者 (可选)",
+      "required": false,
+      "placeholder": "例:技术 manager / 普通读者"
+    },
+    {
+      "key": "tone",
+      "type": "select",
+      "label": "文体",
+      "required": true,
+      "options": [
+        {"value": "academic",  "label": "学术 (academic)"},
+        {"value": "blog",      "label": "博客 (blog)"},
+        {"value": "technical", "label": "技术报告 (technical)"}
+      ],
+      "default": "blog"
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": "语言",
+      "required": true,
+      "options": [
+        {"value": "zh", "label": "中文"},
+        {"value": "en", "label": "English"}
+      ],
+      "default": "zh"
+    }
+  ],
+  "llm_pipeline": [
+    {
+      "id": "polish",
+      "uses": [],
+      "model_hint": "deepseek-chat",
+      "temperature": 0.4,
+      "json_mode": "prompt-only",
+      "system_prompt_template": "你是一个把用户粗稿润色为结构化文章的助手。\n\n【目标读者】{{input.audience}}\n【文体】{{input.tone}}\n【语言】{{input.language}}\n\n输出严格 JSON,结构如下:\n{\n  \"title\": \"<最终标题>\",\n  \"abstract\": \"<2-4 句摘要>\",\n  \"sections\": [\n    {\n      \"heading\": \"<小节标题>\",\n      \"level\": 2,\n      \"body_md\": \"<这一段的 markdown 主体, 可含段落 / 列表 / 引用 / 代码块>\"\n    }\n  ]\n}\n\n规则:\n1. 不要新增用户没说过的事实。润色 = 重组结构 + 改写流畅,不是续写。\n2. 输出 ONLY JSON, 不要 markdown 代码块包裹(若模型限制必须包,可用 ```json ... ```)。\n3. body_md 是 markdown 子集: 段落、`#` 标题、`-`/`1.` 列表、`> ` 引用、 ``` 代码块、 *斜体*/**粗体**/`代码`/[文字](url)。\n4. sections 数量 3-7 个,heading 短而准。\n5. 文体=academic 时严谨克制,blog 时口语化,technical 时多用例子与代码块。",
+      "user_prompt_template": "请把以下原文润色为结构化文章:\n\n{{input.original_text}}",
+      "expected_output_schema": {
+        "type": "object",
+        "required": ["title", "sections"],
+        "properties": {
+          "title":    { "type": "string" },
+          "abstract": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["heading", "body_md"],
+              "properties": {
+                "heading": { "type": "string" },
+                "level":   { "type": "number" },
+                "body_md": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "browser_runtime": {
+    "llm_adapter": "openai-chat-compat",
+    "image_adapter": null,
+    "default_endpoints": {
+      "llm": {
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat"
+      }
+    },
+    "concurrency": 1,
+    "timeout_ms": {
+      "llm": 120000,
+      "image": 0
+    },
+    "retry": {
+      "llm": 0,
+      "image": 0
+    },
+    "extra_libs": []
+  },
+  "render": {
+    "output_form": "markdown",
+    "template_html": "",
+    "css_lock": "",
+    "data_binding": "$.steps.polish.output",
+    "sanitizer": "dompurify-strict",
+    "features": {
+      "toc": false,
+      "footnotes": false,
+      "syntax_highlight": false,
+      "print_css": true,
+      "export_pdf": false
+    }
+  },
+  "error_ux": {
+    "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+    "missing_image_key": "(本 skill 不需要图像 API)",
+    "llm_4xx": "LLM 调用被拒绝。常见原因: key 失效 / 余额不足 / 不支持该模型。",
+    "llm_5xx": "LLM 服务暂时不可用,过几秒再试。",
+    "llm_timeout": "LLM 响应超时(>120s)。检查网络,或换 base_url。",
+    "image_4xx": "(N/A)",
+    "image_5xx": "(N/A)",
+    "image_timeout": "(N/A)",
+    "cors": "浏览器拒绝了跨域请求。这个 endpoint 可能不允许从网页直接调用 — 你需要换一个 CORS 友好的 endpoint。",
+    "json_parse": "LLM 没返回有效 JSON。点 [看 prompt] 查看,或换更强的模型重试。",
+    "kind_unsupported": "此编译产物不支持当前操作。"
+  },
+  "attribution": {
+    "source_skill_link": "https://github.com/xuejia-mq/skill2web/tree/main/hero-cases/synthetic-essay-polisher",
+    "source_author": "skill2web",
+    "source_author_link": "https://github.com/xuejia-mq/skill2web",
+    "source_license": "MIT",
+    "source_license_text_file": "LICENSE",
+    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2 编译(合成 hero case · MIT)。无外部源 skill。"
+  }
+}

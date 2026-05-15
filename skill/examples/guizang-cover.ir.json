@@ -1,0 +1,134 @@
+{
+  "_comment": "IR for guizang-cover (synthetic example aligned with guizang-ppt's cover-branch shape, used as v0.2 png-canvas reference). Single LLM call expands user topic into a single image prompt; one image API call produces one PNG. Matches DESIGN-v0.2.md §6.5.",
+  "ir_version": "0.2",
+  "ir_kind": "png-canvas",
+  "skill_meta": {
+    "name": "guizang-cover",
+    "display_name": "Guizang 风格封面 (合成示例)",
+    "description": "把主题 + 比例 + 风格关键词 → 一段图像 prompt → 一张封面 PNG。形态参考 guizang-ppt 的封面分支。",
+    "source": {
+      "type": "local",
+      "url": "https://github.com/xuejia-mq/skill2web/tree/main/skill/examples/guizang-cover.ir.json",
+      "rev": "main",
+      "path_inside_repo": "skill/examples"
+    },
+    "license": "MIT",
+    "author": "skill2web (synthetic)",
+    "author_links": ["https://github.com/xuejia-mq/skill2web"]
+  },
+  "input_schema": [
+    {
+      "key": "topic",
+      "type": "textarea",
+      "label": "主题 / 内容描述",
+      "required": true,
+      "placeholder": "例:'2025 年中国 AI 行业回顾',或贴一段简介。"
+    },
+    {
+      "key": "title_text",
+      "type": "text",
+      "label": "封面主标题(可选)",
+      "required": false,
+      "placeholder": "例:AI 2025"
+    },
+    {
+      "key": "subtitle_text",
+      "type": "text",
+      "label": "副标题(可选)",
+      "required": false
+    },
+    {
+      "key": "aspect",
+      "type": "select",
+      "label": "比例 / 尺寸",
+      "required": true,
+      "options": [
+        {"value": "1024x1024", "label": "1:1 方图 (1024×1024)"},
+        {"value": "1024x1536", "label": "3:4 人像 (1024×1536)"},
+        {"value": "1536x1024", "label": "16:9 横版 (1536×1024)"},
+        {"value": "1536x768",  "label": "21:9 超宽 (1536×768)"}
+      ],
+      "default": "1024x1536"
+    },
+    {
+      "key": "style_keyword",
+      "type": "select",
+      "label": "视觉风格",
+      "required": true,
+      "options": [
+        {"value": "magazine",   "label": "杂志封面 (magazine)"},
+        {"value": "minimal",    "label": "极简 (minimal)"},
+        {"value": "playful",    "label": "活泼 (playful)"},
+        {"value": "industrial", "label": "工业感 (industrial)"}
+      ],
+      "default": "magazine"
+    }
+  ],
+  "llm_pipeline": [
+    {
+      "id": "draft",
+      "uses": [],
+      "model_hint": "deepseek-chat",
+      "temperature": 0.6,
+      "json_mode": "prompt-only",
+      "system_prompt_template": "你是封面设计师助手。读用户的主题与风格选择, 输出一段简洁的英文 image prompt 描述, 用于一次图像 API 调用直接出图。\n\n输出 strict JSON:\n{\n  \"prompt_body\": \"<one-paragraph English image prompt, 不超过 200 词, 描述主体 / 构图 / 配色 / 字体类型 / 视觉关键词>\",\n  \"title\":       \"<最终用于 filename 的简短中文标题>\"\n}\n\n规则:\n1. 风格关键词 ({{input.style_keyword}}) 决定主基调\n2. 如果用户提供 title_text / subtitle_text, 在 prompt_body 里精确写明 'render the text \"<title>\" exactly as title' 等指示\n3. 不要描述边框、纸张、水印 — 这些由 style_lock 全局处理\n4. 输出 ONLY JSON, 不要 markdown 包裹",
+      "user_prompt_template": "【主题】{{input.topic}}\n【比例】{{input.aspect}}\n【主标题】{{input.title_text}}\n【副标题】{{input.subtitle_text}}\n【风格】{{input.style_keyword}}",
+      "expected_output_schema": {
+        "type": "object",
+        "required": ["prompt_body", "title"],
+        "properties": {
+          "prompt_body": { "type": "string" },
+          "title":       { "type": "string" }
+        }
+      }
+    }
+  ],
+  "browser_runtime": {
+    "llm_adapter": "openai-chat-compat",
+    "image_adapter": "openai-images-compat",
+    "default_endpoints": {
+      "llm":   { "base_url": "https://api.deepseek.com/v1",            "model": "deepseek-chat" },
+      "image": { "base_url": "https://image.token-recyclebin.com/v1", "model": "gpt-image-2" }
+    },
+    "concurrency": 1,
+    "timeout_ms": { "llm": 120000, "image": 180000 },
+    "retry":      { "llm": 0, "image": 1 },
+    "extra_libs": []
+  },
+  "render": {
+    "canvas_size": "1024x1536",
+    "static_assets": {
+      "style_lock": "Single-image cover composition, refined editorial poster aesthetic, balanced typography hierarchy, subtle paper grain, restrained palette (matte ink black, off-white near #FBFAF5, one accent color from the brief). No watermark, no fake logos, no gibberish text. Negative space at the top and one corner. Minimal embellishment.",
+      "reference_clauses": [
+        "Match the established Guizang single-cover language: a single coherent visual subject occupying the center 50-65% of the frame, large but understated typographic title, optional subtitle one third the size, no UI chrome."
+      ]
+    },
+    "prompt_template": "Asset: single editorial poster cover, aspect implied by canvas_size={{static_assets_canvas_size_passthrough}}.\n\nApply the cover style lock:\n{{static_assets.style_lock}}\n\nReference clause:\n{{static_assets.reference_clauses.0}}\n\nLLM-drafted body:\n{{steps.draft.output.prompt_body}}\n\nAvoid:\nfull-page border, watermark, repeated micro-labels, oversized fonts, gibberish, low-effort gradient backgrounds.",
+    "data_binding": "$.steps.draft.output",
+    "api": "openai-images-compat",
+    "endpoint_mode": "generations",
+    "compositing": "none",
+    "fonts": []
+  },
+  "error_ux": {
+    "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+    "missing_image_key": "请先在 [设置] 里填图像 API Key。",
+    "llm_4xx": "LLM 调用被拒绝。常见原因: key 失效 / 余额不足 / 不支持该模型。",
+    "llm_5xx": "LLM 服务暂时不可用,过几秒再试。",
+    "llm_timeout": "LLM 响应超时(>120s)。检查网络,或换 base_url。",
+    "image_4xx": "图像 API 调用失败。可能是 endpoint 不支持当前 mode (/generations vs /edits)。试试在 [设置] 切换。",
+    "image_5xx": "图像服务繁忙,会自动重试一次。",
+    "image_timeout": "图像生成超时(>180s)。点 [重试]。",
+    "cors": "浏览器拒绝了跨域请求。这个 endpoint 可能不允许从网页直接调用 — 你需要换一个 CORS 友好的 endpoint。",
+    "json_parse": "LLM 没返回有效 JSON。点 [看 prompt] 查看,或换更强的模型重试。",
+    "kind_unsupported": "此编译产物不支持当前操作。"
+  },
+  "attribution": {
+    "source_skill_link": "https://github.com/op7418/guizang-ppt-skill",
+    "source_author": "guizang (op7418) — schema 形态参照",
+    "source_author_link": "https://github.com/op7418",
+    "source_license": "MIT (合成 IR 由 skill2web 编写, 形态参考 guizang-ppt 封面分支)",
+    "source_license_text_file": "LICENSE",
+    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2 编译。形态参照 guizang-ppt 封面分支(<a href='https://github.com/op7418/guizang-ppt-skill'>op7418</a> · MIT),IR 与渲染逻辑由 skill2web 合成。"
+  }
+}

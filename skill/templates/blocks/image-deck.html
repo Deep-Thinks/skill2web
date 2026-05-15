@@ -1,0 +1,238 @@
+<!--
+  Block: image-deck
+  Composer 用本文件填充 skeleton.html 的:
+    BLOCK:HEAD          slide-grid CSS
+    BLOCK:UI_SETTINGS   image-key 设置区块
+    BLOCK:UI            slide-grid + 操作按钮
+    BLOCK:RENDER        async renderOutput() — 并发跑 N 张图
+  ADAPTER:LLM   = openai-chat-compat (skeleton 注入)
+  ADAPTER:IMAGE = openai-images-compat (skeleton 注入)
+-->
+
+<!-- BLOCK:HEAD -->
+.slide-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.slide-card{
+  border:1px solid #E5E0D5;border-radius:8px;overflow:hidden;background:#FBFAF5;
+  display:flex;flex-direction:column;
+}
+.slide-card .slide-thumb{
+  aspect-ratio:16/9;background:#F2EEE4;display:flex;align-items:center;justify-content:center;
+  color:#A8A29A;font-size:12px;position:relative;overflow:hidden;
+}
+.slide-card.cover .slide-thumb{aspect-ratio:21/9}
+.slide-card .slide-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.slide-card .slide-info{padding:10px 12px;border-top:1px solid #E5E0D5}
+.slide-card .slide-title{
+  font-size:13px;font-weight:500;margin:0 0 3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.slide-card .slide-meta{font-size:11px;color:#A8A29A}
+.slide-card .slide-actions{padding:8px 12px;border-top:1px solid #E5E0D5;display:flex;gap:8px}
+.slide-card .slide-actions button{
+  flex:1;font-size:11px;padding:5px 8px;background:transparent;
+  border:1px solid #E5E0D5;color:#5F5A50;border-radius:4px;
+}
+.slide-card .slide-actions button:hover:not(:disabled){background:#F2EEE4}
+.slide-card .slide-actions button:disabled{opacity:.4;cursor:not-allowed}
+.slide-card.error{border-color:#F5C7B6}
+.slide-card.error .slide-thumb{background:#FDF4F0;color:#D66F4D}
+.slide-card.running .slide-thumb::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,#FFF8 50%,transparent);
+  animation:shimmer 1.6s infinite;
+}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+<!-- BLOCK:HEAD_END -->
+
+<!-- BLOCK:UI_SETTINGS -->
+<div class="key-section">
+  <h3>② 图像生成</h3>
+  <div class="form-grid">
+    <div class="form-row">
+      <label>API Key</label>
+      <input type="password" id="image-key" placeholder="sk-xxx" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label>Model</label>
+      <input type="text" id="image-model" value="{{IR.browser_runtime.default_endpoints.image.model|attr}}">
+    </div>
+  </div>
+  <div class="form-grid">
+    <div class="form-row">
+      <label>Base URL</label>
+      <input type="text" id="image-base-url" value="{{IR.browser_runtime.default_endpoints.image.base_url|attr}}">
+    </div>
+    <div class="form-row">
+      <label>Endpoint 模式</label>
+      <select id="image-endpoint-mode">
+        <option value="generations">/images/generations</option>
+        <option value="edits">/images/edits(带空白参考图)</option>
+      </select>
+    </div>
+  </div>
+</div>
+<!-- BLOCK:UI_SETTINGS_END -->
+
+<!-- BLOCK:UI -->
+<div class="slide-grid" id="slide-grid"></div>
+<div class="actions-row" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+  <button class="btn-secondary" id="btn-download-all">下载全部</button>
+  <button class="btn-secondary" id="btn-regenerate-failed">重试所有失败</button>
+  <button class="btn-secondary" id="btn-reset">从头开始</button>
+</div>
+<!-- BLOCK:UI_END -->
+
+<!-- BLOCK:RENDER -->
+const __slides = { items: [] };
+
+async function renderOutput() {
+  document.getElementById("btn-download-all").onclick = downloadAllImages;
+  document.getElementById("btn-regenerate-failed").onclick = retryFailedSlides;
+  document.getElementById("btn-reset").onclick = () => {
+    resetUi();   /* skeleton-defined */
+    __slides.items = [];
+    document.getElementById("slide-grid").innerHTML = "";
+  };
+
+  // 取 iterator (e.g. "$.steps.plan.output.slides") -> 数组
+  const iterArr = jsonpathLite({ steps: state.steps }, RENDER_CONFIG.iterator);
+  if (!Array.isArray(iterArr)) {
+    throw new Error("LLM pipeline 输出缺少 iterator 数组: " + RENDER_CONFIG.iterator);
+  }
+  log("spine 完成, " + iterArr.length + " 项", "success");
+  initSlideCards(iterArr);
+  await generateAllImages();
+  const okCount = __slides.items.filter(s => s.status === "done").length;
+  const failCount = __slides.items.filter(s => s.status === "fail").length;
+  if (failCount > 0) log(okCount + " 成 / " + failCount + " 失败", "error");
+  else log("完成 " + okCount + " 项", "success");
+}
+
+function initSlideCards(items) {
+  __slides.items = items.map((s, i) => Object.assign({}, s, {
+    idx: i + 1,
+    role: s.role || "body",
+    status: "pending",
+    b64: null, error: null, promptText: "",
+  }));
+  const grid = document.getElementById("slide-grid");
+  grid.innerHTML = "";
+  __slides.items.forEach(s => grid.appendChild(renderSlideCard(s)));
+}
+
+function renderSlideCard(slide) {
+  const card = document.createElement("div");
+  card.className = "slide-card " + slide.role + " " + slide.status;
+  card.dataset.idx = slide.idx;
+  card.innerHTML = ''
+    + '<div class="slide-thumb" data-thumb><span data-thumb-text>等待中</span></div>'
+    + '<div class="slide-info">'
+    +   '<div class="slide-title">' + escapeHtml(slide.idx + ". " + (slide.title || "")) + '</div>'
+    +   '<div class="slide-meta">' + escapeHtml(slide.archetype || "") + ' · ' + slide.role + '</div>'
+    + '</div>'
+    + '<div class="slide-actions">'
+    +   '<button data-act="download" disabled>下载</button>'
+    +   '<button data-act="retry">重试</button>'
+    +   '<button data-act="prompt">看 prompt</button>'
+    + '</div>';
+  card.querySelector('[data-act="download"]').onclick = () => downloadOne(slide.idx);
+  card.querySelector('[data-act="retry"]').onclick    = () => retryOne(slide.idx);
+  card.querySelector('[data-act="prompt"]').onclick   = () => showPrompt(slide.idx);
+  return card;
+}
+
+function updateSlideCard(slide) {
+  const card = document.querySelector('.slide-card[data-idx="' + slide.idx + '"]');
+  if (!card) return;
+  card.className = "slide-card " + slide.role + " " + slide.status;
+  const thumb = card.querySelector("[data-thumb]");
+  if (slide.status === "done" && slide.b64) {
+    thumb.innerHTML = '<img alt="' + escapeHtml(slide.title || "") + '" src="data:image/png;base64,' + slide.b64 + '">';
+  } else if (slide.status === "fail") {
+    thumb.innerHTML = '<span>失败: ' + escapeHtml((slide.error || "").slice(0, 80)) + '</span>';
+  } else if (slide.status === "running") {
+    thumb.innerHTML = '<span>生成中…</span>';
+  } else {
+    thumb.innerHTML = '<span>等待中</span>';
+  }
+  card.querySelector('[data-act="download"]').disabled = !(slide.status === "done" && slide.b64);
+}
+
+async function generateAllImages() {
+  const queue = __slides.items.filter(s => s.status !== "done").map(s => s.idx);
+  await runWithConcurrency(queue, IMAGE_CONCURRENCY, processSlide);
+}
+
+async function processSlide(idx) {
+  const slide = __slides.items[idx - 1];
+  slide.status = "running"; slide.error = null;
+  updateSlideCard(slide);
+
+  const total = __slides.items.length;
+  const promptCtx = {
+    item: slide,
+    total: total,
+    static_assets: RENDER_CONFIG.static_assets,
+  };
+  const promptText = mustacheLite(RENDER_CONFIG.per_item.prompt_template, promptCtx);
+  slide.promptText = promptText;
+
+  let lastErr;
+  for (let attempt = 0; attempt <= IMAGE_RETRY; attempt++) {
+    try {
+      log("[#" + idx + "] " + (attempt === 0 ? "首次" : "重试 " + attempt));
+      const sizeMap = (RENDER_CONFIG.per_item && RENDER_CONFIG.per_item.size_by_role) || {};
+      const size = sizeMap[slide.role] || "1536x1024";
+      const b64 = await callImageAPI(promptText, size, RENDER_CONFIG.per_item.endpoint_mode);
+      slide.b64 = b64; slide.status = "done";
+      updateSlideCard(slide);
+      log("[#" + idx + "] 完成", "success");
+      return;
+    } catch (e) {
+      lastErr = e;
+      log("[#" + idx + "] 失败: " + e.message, "error");
+    }
+  }
+  slide.status = "fail"; slide.error = lastErr ? lastErr.message : "未知";
+  updateSlideCard(slide);
+}
+
+function downloadOne(idx) {
+  const slide = __slides.items[idx - 1];
+  if (!slide || !slide.b64) return;
+  const fn = "slide-" + String(idx).padStart(2,"0") + "-" + sanitize(slide.title) + ".png";
+  const a = document.createElement("a");
+  a.href = "data:image/png;base64," + slide.b64; a.download = fn;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function sanitize(s) { return String(s || "untitled").replace(/[\\\/:*?"<>|\s]+/g, "_").slice(0, 40); }
+
+async function downloadAllImages() {
+  const dones = __slides.items.filter(s => s.status === "done" && s.b64);
+  if (!dones.length) { alert("还没成功生成"); return; }
+  for (const s of dones) { downloadOne(s.idx); await new Promise(r => setTimeout(r, 200)); }
+}
+
+async function retryOne(idx) {
+  const slide = __slides.items[idx - 1];
+  if (!slide) return;
+  slide.status = "pending"; updateSlideCard(slide);
+  await processSlide(idx);
+}
+
+async function retryFailedSlides() {
+  const failed = __slides.items.filter(s => s.status === "fail").map(s => s.idx);
+  if (!failed.length) { alert("没有失败"); return; }
+  for (const idx of failed) __slides.items[idx - 1].status = "pending";
+  failed.forEach(idx => updateSlideCard(__slides.items[idx - 1]));
+  await runWithConcurrency(failed, IMAGE_CONCURRENCY, processSlide);
+}
+
+function showPrompt(idx) {
+  const slide = __slides.items[idx - 1];
+  if (!slide || !slide.promptText) { alert("还没拼好 prompt"); return; }
+  const w = window.open("", "_blank");
+  if (!w) { alert(slide.promptText); return; }
+  w.document.write('<pre style="font:13px ui-monospace,monospace;padding:24px;white-space:pre-wrap">' + escapeHtml(slide.promptText) + '</pre>');
+}
+<!-- BLOCK:RENDER_END -->

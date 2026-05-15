@@ -1,0 +1,296 @@
+<!--
+  Block: template-html
+  Composer 用本文件填充 skeleton.html 的:
+    BLOCK:HEAD          article CSS + @media print
+    BLOCK:UI_SETTINGS   空(template-html 不需要 image-key)
+    BLOCK:UI            <article> + 操作按钮
+    BLOCK:RENDER        renderOutput / renderArticle / renderMarkdown / sanitizeHtml
+  ADAPTER:LLM   = openai-chat-compat (skeleton 注入)
+  ADAPTER:IMAGE = (空, image_adapter=null)
+-->
+
+<!-- BLOCK:HEAD -->
+.article-actions{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+article#article{
+  background:#FFF;border:1px solid #E5E0D5;border-radius:8px;
+  padding:36px 44px;font-size:15px;line-height:1.75;color:#222;
+}
+article#article h1{font-size:24px;margin:0 0 6px;font-weight:700}
+article#article .article-meta{font-size:12px;color:#5F5A50;margin-bottom:18px}
+article#article .article-abstract{
+  background:#FBFAF5;border-left:3px solid #3B6FB6;
+  padding:14px 18px;font-size:13.5px;color:#444;margin-bottom:24px;border-radius:0 6px 6px 0;
+}
+article#article h2{font-size:18px;margin:28px 0 10px;border-bottom:1px solid #EEE;padding-bottom:6px}
+article#article h3{font-size:15.5px;margin:22px 0 8px}
+article#article p{margin:8px 0 14px}
+article#article code{background:#F2EEE4;padding:1px 5px;border-radius:3px;font-size:12.5px}
+article#article pre{background:#F8F6F0;padding:12px 14px;border-radius:6px;overflow-x:auto;font-size:12.5px}
+article#article pre code{background:transparent;padding:0}
+article#article ul,article#article ol{margin:8px 0 14px;padding-left:24px}
+article#article blockquote{border-left:3px solid #D9C7A6;background:#FBF7EB;padding:8px 14px;margin:12px 0;color:#5F5A50}
+article#article table{border-collapse:collapse;margin:12px 0}
+article#article table th,article#article table td{border:1px solid #E5E0D5;padding:6px 12px}
+article#article img{max-width:100%;height:auto;border-radius:6px}
+
+@media print {
+  header, #settings-panel, #input-section, #progress-section, .article-actions, footer { display: none !important; }
+  body { background: #FFF; }
+  main { padding: 0; max-width: none; }
+  section { border: none; box-shadow: none; padding: 0; margin: 0; }
+  article#article { border: none; padding: 0; }
+}
+<!-- BLOCK:HEAD_END -->
+
+<!-- BLOCK:UI_SETTINGS -->
+<!-- BLOCK:UI_SETTINGS_END -->
+
+<!-- BLOCK:UI -->
+<div class="article-actions">
+  <button class="btn-secondary" id="btn-print">打印 / 存 PDF</button>
+  <button class="btn-secondary" id="btn-copy-md">复制源 markdown</button>
+  <button class="btn-secondary" id="btn-download-md">下载 .md</button>
+  <button class="btn-secondary" id="btn-show-prompt">看 prompt</button>
+  <button class="btn-secondary" id="btn-reset">从头开始</button>
+</div>
+<article id="article"></article>
+<!-- BLOCK:UI_END -->
+
+<!-- BLOCK:RENDER -->
+const __article = { lastMarkdown: "", lastHtml: "" };
+
+async function renderOutput() {
+  document.getElementById("btn-print").onclick = () => window.print();
+  document.getElementById("btn-copy-md").onclick = () => {
+    if (!navigator.clipboard) { alert(__article.lastMarkdown); return; }
+    navigator.clipboard.writeText(__article.lastMarkdown).then(
+      () => log("已复制 markdown 到剪贴板", "success"),
+      (e) => log("复制失败: " + e.message, "error"));
+  };
+  document.getElementById("btn-download-md").onclick = () => {
+    const blob = new Blob([__article.lastMarkdown], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "polished.md";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  document.getElementById("btn-show-prompt").onclick = () => {
+    /* show last step's raw response */
+    const ids = Object.keys(state.steps);
+    if (!ids.length) { alert("还没跑过"); return; }
+    const last = state.steps[ids[ids.length - 1]];
+    const w = window.open("", "_blank");
+    if (!w) { alert(last.raw || "(empty)"); return; }
+    w.document.write('<pre style="font:13px ui-monospace,monospace;padding:24px;white-space:pre-wrap">'
+      + escapeHtml(last.raw || "") + '</pre>');
+  };
+  document.getElementById("btn-reset").onclick = () => {
+    resetUi();
+    __article.lastMarkdown = ""; __article.lastHtml = "";
+    document.getElementById("article").innerHTML = "";
+  };
+
+  // 取 data_binding 上下文根
+  const root = jsonpathLite({ steps: state.steps }, RENDER_CONFIG.data_binding);
+  if (root == null) {
+    throw new Error("template-html data_binding 缺数据: " + RENDER_CONFIG.data_binding);
+  }
+
+  const form = RENDER_CONFIG.output_form;
+  const tplStr = RENDER_CONFIG.template_html || "";
+  const sanitizer = RENDER_CONFIG.sanitizer;
+
+  let bodyHtml;
+  if (tplStr) {
+    // 用户给了 template, 走 mustache 渲染
+    bodyHtml = renderTemplate(tplStr, root, form, sanitizer);
+  } else {
+    // 缺省"标准 article 模板"
+    bodyHtml = renderDefaultArticle(root, form, sanitizer);
+  }
+
+  const art = document.getElementById("article");
+  if (form === "full-document" && sanitizer === "none-trust") {
+    // iframe sandbox
+    art.innerHTML = "";
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "allow-same-origin");
+    iframe.style.cssText = "width:100%;min-height:60vh;border:1px solid #E5E0D5;border-radius:6px";
+    art.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(bodyHtml);
+    iframe.contentDocument.close();
+  } else {
+    art.innerHTML = bodyHtml;
+  }
+
+  // build source markdown for copy/download
+  __article.lastHtml = bodyHtml;
+  __article.lastMarkdown = buildSourceMarkdown(root, form);
+}
+
+function renderTemplate(tpl, root, form, sanitizer) {
+  // expose root under both 'root' and as direct properties so users can write
+  // {{title}} or {{root.title}}.  Also expose state.steps for {{steps.X.output.Y}}.
+  const ctx = Object.assign({}, root, { root: root, steps: state.steps });
+  const filled = mustacheLite(tpl, ctx);
+  if (form === "markdown") return sanitizeBy(renderMarkdown(filled), sanitizer);
+  if (form === "html-fragment") return sanitizeBy(filled, sanitizer);
+  return filled;  // full-document, sanitizer handled above
+}
+
+function renderDefaultArticle(root, form, sanitizer) {
+  const parts = [];
+  const title = root.title || root.heading || "Untitled";
+  parts.push("<h1>" + escapeHtml(title) + "</h1>");
+  if (root.abstract) parts.push('<div class="article-abstract">' + escapeHtml(root.abstract) + "</div>");
+
+  const sections = root.sections || root.items || [];
+  for (const sec of sections) {
+    const lvl = (sec.level === 3) ? 3 : 2;
+    parts.push("<h" + lvl + ">" + escapeHtml(sec.heading || "") + "</h" + lvl + ">");
+    let body = "";
+    if (form === "markdown") body = sanitizeBy(renderMarkdown(sec.body_md || sec.body || ""), sanitizer);
+    else if (form === "html-fragment") body = sanitizeBy(sec.body_html || sec.body || "", sanitizer);
+    else body = sec.body || "";  // full-document handled separately by iframe
+    parts.push("<div>" + body + "</div>");
+  }
+  return parts.join("\n");
+}
+
+function buildSourceMarkdown(root, form) {
+  const lines = [];
+  lines.push("# " + (root.title || root.heading || "Untitled"));
+  lines.push("");
+  if (root.abstract) { lines.push("> " + root.abstract); lines.push(""); }
+  const sections = root.sections || root.items || [];
+  for (const sec of sections) {
+    const lvl = (sec.level === 3) ? "###" : "##";
+    lines.push(lvl + " " + (sec.heading || ""));
+    lines.push("");
+    if (form === "markdown") lines.push(sec.body_md || sec.body || "");
+    else lines.push(htmlToText(sec.body_html || sec.body || ""));
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+function htmlToText(s) {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = s;
+  return tmp.textContent || "";
+}
+
+/* === markdown subset render === */
+function renderMarkdown(md) {
+  if (!md) return "";
+  md = md.replace(/\r\n?/g, "\n");
+  const lines = md.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    let line = lines[i];
+    const fence = line.match(/^```(\w+)?\s*$/);
+    if (fence) {
+      const lang = fence[1] || ""; i++;
+      const buf = [];
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++;
+      const langCls = lang ? ' class="language-' + escapeHtml(lang) + '"' : "";
+      out.push("<pre><code" + langCls + ">" + escapeHtml(buf.join("\n")) + "</code></pre>");
+      continue;
+    }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { out.push("<h" + h[1].length + ">" + renderInline(h[2]) + "</h" + h[1].length + ">"); i++; continue; }
+    if (/^>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^>\s?/, "")); i++; }
+      out.push("<blockquote>" + renderInline(buf.join(" ")) + "</blockquote>");
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*[-*]\s+/, "")); i++; }
+      out.push("<ul>" + buf.map(b => "<li>" + renderInline(b) + "</li>").join("") + "</ul>");
+      continue;
+    }
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
+      out.push("<ol>" + buf.map(b => "<li>" + renderInline(b) + "</li>").join("") + "</ol>");
+      continue;
+    }
+    if (/^\s*$/.test(line)) { i++; continue; }
+    const pbuf = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,6})\s+/.test(lines[i]) && !/^>\s?/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+\.\s+/.test(lines[i]) && !/^```/.test(lines[i])) {
+      pbuf.push(lines[i]); i++;
+    }
+    out.push("<p>" + renderInline(pbuf.join(" ")) + "</p>");
+  }
+  return out.join("\n");
+}
+
+function renderInline(s) {
+  if (!s) return "";
+  let h = escapeHtml(s);
+  h = h.replace(/`([^`\n]+)`/g, (m, c) => "<code>" + c + "</code>");
+  h = h.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => '<a href="' + escapeAttrLite(u) + '" target="_blank" rel="noopener">' + t + '</a>');
+  h = h.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
+  return h;
+}
+function escapeAttrLite(s) { return escapeHtml(s).replace(/javascript:/i, "").replace(/data:/i, "").replace(/vbscript:/i, ""); }
+
+/* === sanitizer (intent-equivalent of dompurify-strict / -relaxed) === */
+const __SANITIZER_TAGS = {
+  "dompurify-strict": new Set([
+    "p","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote",
+    "pre","code","strong","em","a","br","hr","span"
+  ]),
+  "dompurify-relaxed": new Set([
+    "p","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote",
+    "pre","code","strong","em","a","br","hr","span","div",
+    "table","thead","tbody","tr","td","th","img","figure","figcaption"
+  ]),
+};
+const __SANITIZER_ATTRS = {
+  "a":   new Set(["href","target","rel"]),
+  "img": new Set(["src","alt","title"]),
+  "code": new Set(["class"]),
+  "*":   new Set([]),
+};
+
+function sanitizeBy(htmlStr, mode) {
+  if (mode === "none-trust") return htmlStr;
+  const allowed = __SANITIZER_TAGS[mode] || __SANITIZER_TAGS["dompurify-strict"];
+  const tpl = document.createElement("template");
+  tpl.innerHTML = htmlStr;
+  walkAndPrune(tpl.content, allowed);
+  return tpl.innerHTML;
+}
+function walkAndPrune(node, allowed) {
+  const kids = Array.from(node.childNodes);
+  for (const c of kids) {
+    if (c.nodeType === 1) {
+      const tag = c.tagName.toLowerCase();
+      if (!allowed.has(tag)) {
+        const parent = c.parentNode;
+        while (c.firstChild) parent.insertBefore(c.firstChild, c);
+        parent.removeChild(c);
+        continue;
+      }
+      const attrSet = __SANITIZER_ATTRS[tag] || __SANITIZER_ATTRS["*"];
+      for (const attr of Array.from(c.attributes)) {
+        if (!attrSet.has(attr.name)) { c.removeAttribute(attr.name); continue; }
+        if (attr.name === "href" || attr.name === "src") {
+          const v = (attr.value || "").trim();
+          if (/^(javascript|data|vbscript):/i.test(v)) c.removeAttribute(attr.name);
+        }
+      }
+      walkAndPrune(c, allowed);
+    } else if (c.nodeType === 8) {
+      c.parentNode.removeChild(c);
+    }
+  }
+}
+<!-- BLOCK:RENDER_END -->

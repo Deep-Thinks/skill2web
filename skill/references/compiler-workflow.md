@@ -230,28 +230,57 @@ For each unfound row, run USER GATE 3 to either:
 
 Lock the user's answers into IR.browser_runtime.default_endpoints.
 
-## Phase 5 — Composer
+## Phase 5 — Composer (v0.2 三步组装)
 
-Read `templates/base.html`. It contains `{{…}}` placeholders that map 1:1 to IR fields.
+> v0.2 关键变化: composer 不再是"单模板 + Mustache 填空", 而是 **skeleton + block + adapters 三步组装**。
+> 实现见 `skill/compose.py`(可直接 `python3 skill/compose.py <ir.json> <out.html>` 调).
 
-Composer is a **pure template-fill operation**. For each placeholder:
+### 5.1 三步流程
 
-1. Look up the value in IR.
-2. JSON-stringify (for JS const) or HTML-escape (for HTML attribute) as appropriate — the placeholder name tells you which (see `base.html` comments).
-3. Substitute.
+1. **取骨架**: 读 `templates/skeleton.html`(通用 frame: header / settings / footer / pipeline runner / mustache-lite / loadSettings)
+2. **注入 block**: 按 `IR.ir_kind` 选 `templates/blocks/<kind>.html`, 替换 skeleton 的 `BLOCK:HEAD` / `BLOCK:UI_SETTINGS` / `BLOCK:UI` / `BLOCK:RENDER` 段
+3. **注入 adapter**: 按 `IR.browser_runtime.{llm,image}_adapter` 选 `templates/adapters/<name>.js`, inline 到 skeleton 的 `ADAPTER:LLM` / `ADAPTER:IMAGE` 段
+4. **placeholder 替换**: 把所有 `{{IR.X.Y|filter}}` 用 IR 树值替换(filter: `raw`/`html`/`attr`/`url`/`js-string`/`js-number`/`js-bool`/`js-bool-non-null`/`js-object`/`js-array`/`render-form-fields`/`js-spec`/`js-pipeline`)
 
-Common placeholder forms (full list in `base.html`):
+### 5.2 placeholder 协议要点
 
-- `{{IR.skill_meta.display_name}}` → HTML-escaped string
-- `{{IR.skill_meta.source.url}}` → URL (HTML-escaped, in `href`)
-- `{{IR.static_assets.style_lock|js-string}}` → JS string literal (backtick-wrapped, no escaping of newlines)
-- `{{IR.input_schema|render-form}}` → composer generates `<input>`/`<select>`/`<textarea>` markup
-- `{{IR.llm_phase.system_prompt_template|js-string}}` → JS string literal
-- `{{IR.attribution.footer_html|raw}}` → raw HTML (with `{{source_skill_name}}` etc. inside already substituted)
+只有以 `IR.` 开头的 `{{...}}` 是 build-time placeholder; 其它 `{{key}}` / `{{steps.X.output.Y}}` 是 run-time mustache-lite,composer 不动。
 
-If any placeholder is missing in IR (i.e. composer would substitute `undefined`): **emit a warning and ask the user**. Do not produce a broken HTML silently.
+特殊 filter:
+- `|render-form-fields` (用于 `IR.input_schema`) — 展开为 `<div class="form-row">` 块
+- `|js-spec` (用于 `IR.input_schema`) — 展开为 JS const 字段元数据数组
+- `|js-pipeline` (用于 `IR.llm_pipeline`) — 展开为 JS const 数组,字符串字段保持 JS template literal
+- `|js-bool-non-null` — 任意非 null 非空字符串视为 true(用于 `NEEDS_IMAGE` 判定 image_adapter 是否存在)
 
-Output the composed HTML to `<output-dir>/<skill-name>.html`.
+### 5.3 Block 协议
+
+每个 `blocks/<kind>.html` 必须提供四段(用 HTML 注释标记包裹):
+
+```html
+<!-- BLOCK:HEAD --> ...kind-specific CSS... <!-- BLOCK:HEAD_END -->
+<!-- BLOCK:UI_SETTINGS --> ...image-key 区块或空... <!-- BLOCK:UI_SETTINGS_END -->
+<!-- BLOCK:UI --> ...kind-specific HTML(slide-grid/article/canvas)... <!-- BLOCK:UI_END -->
+<!-- BLOCK:RENDER --> ...JS,定义 async function renderOutput()... <!-- BLOCK:RENDER_END -->
+```
+
+`renderOutput()` 由 skeleton 的 pipeline runner 在所有 LLM step 完成后调一次,读 `state.steps[*].output` 与 `RENDER_CONFIG`(由 IR.render 注入)。
+
+### 5.4 输出位置与缺位置警告
+
+```bash
+python3 skill/compose.py <ir.json> dist/<skill-name>.html
+```
+
+stderr 会列任何"placeholder unresolved"或"unknown filter"警告 — agent 必须把警告 surface 给用户(可能是 IR 字段缺失)。
+
+### 5.5 错误情况
+
+| 错误 | 处置 |
+|---|---|
+| `ir_version != "0.2"` | 跑 `skill/migrate_v01_to_v02.py` 升级 |
+| `ir_kind` 找不到对应 `blocks/<kind>.html` | 拒绝(spike-gated kind 还没实装) |
+| `llm_adapter` 找不到对应 `adapters/<name>.js` | 拒绝(添加新 adapter 走 USER GATE 3a + adapters.md PR) |
+| placeholder unresolved | 明确告诉用户 IR 缺哪个字段 |
 
 ## Phase 6 — Emitter
 
@@ -362,7 +391,7 @@ If the user runs `skill2web` again on the same skill:
 
 These are intentional (per DESIGN.md):
 
-- **No frontend-design integration**. UI is whatever `base.html` provides. v0.2.
+- **No frontend-design integration**. UI 由 skeleton + block 决定。v0.3。
 - **Only image-per-slide kind**. v0.2 adds template-html / pptx-canvas.
 - **No automated provider CORS verification**. Composer warns the user, doesn't probe.
 - **No zip emit**. Compiled output is single HTML; users download per-file.

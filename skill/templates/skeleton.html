@@ -1,0 +1,595 @@
+<!--
+  ============================================================
+  skill2web · skeleton.html — universal frame (v0.2)
+  ============================================================
+
+  Composer 三步组装:
+    1. 取本骨架为 frame
+    2. 按 ir_kind 选 blocks/<kind>.html, 替换 BLOCK:HEAD / BLOCK:UI / BLOCK:RENDER
+    3. 按 browser_runtime 选 adapters/*.js, inline 进 ADAPTER:LLM / ADAPTER:IMAGE
+
+  Placeholder 协议 (build-time substitution):
+    "{ {IR.X.Y|filter} }"     IR 字段, filter 同 v0.1:
+                                |raw  |html  |attr  |url  |js-string  |js-number
+                                |js-bool  |js-object  |js-array
+                                |js-bool-non-null
+    "{ {IR.input_schema|render-form-fields} }"
+                              展开为 <div class="form-row"> 块
+    "{ {IR.input_schema|js-spec} }"
+                              展开为 JS const 数组(field metadata)
+    "{ {IR.llm_pipeline|js-pipeline} }"
+                              展开为 JS const 数组,字符串字段已转 JS string literal
+    (示例语法用了空格转义以避免 composer 误捕)
+
+  Block 协议 (示例 marker 名以"<!- -"形式记录,实际写时去掉中间空格):
+    "<!- - ADAPTER:LLM - ->"    ... "<!- - ADAPTER:LLM_END - ->"
+    "<!- - ADAPTER:IMAGE - ->"  ... "<!- - ADAPTER:IMAGE_END - ->"
+    "<!- - BLOCK:HEAD - ->"     ... "<!- - BLOCK:HEAD_END - ->"     (kind-specific CSS)
+    "<!- - BLOCK:UI_SETTINGS - ->" ... "<!- - BLOCK:UI_SETTINGS_END - ->" (image-key 区块)
+    "<!- - BLOCK:UI - ->"       ... "<!- - BLOCK:UI_END - ->"       (kind-specific HTML)
+    "<!- - BLOCK:RENDER - ->"   ... "<!- - BLOCK:RENDER_END - ->"   (kind-specific JS)
+
+  Block 必须 export (定义) 一个全局 async 函数 `renderOutput()`, 由 pipeline runner
+  在所有 LLM step 完成后调用一次。`renderOutput()` 读 state.steps[*].output。
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{IR.skill_meta.display_name|html}} · 单文件网页版</title>
+  <style>
+    /* ===== reset & base ===== */
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",
+                  "Helvetica Neue",Helvetica,Arial,sans-serif;
+      background:#FBFAF5;color:#111;line-height:1.55;font-size:14px;min-height:100vh;
+    }
+    a{color:#3B6FB6;text-decoration:none}
+    a:hover{text-decoration:underline}
+    button{cursor:pointer;font:inherit}
+    input,textarea,select{font:inherit;color:inherit}
+
+    header{
+      padding:24px 32px 18px;border-bottom:1px solid #E5E0D5;background:#FBFAF5;
+      display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;
+      position:sticky;top:0;z-index:50;
+    }
+    header h1{margin:0;font-size:22px;font-weight:600;letter-spacing:.01em}
+    header .subtitle{font-size:12px;color:#5F5A50;margin-top:4px}
+    .btn-settings{
+      background:transparent;border:1px solid #C5BFB2;color:#5F5A50;
+      padding:6px 14px;border-radius:6px;font-size:12px;
+    }
+    .btn-settings:hover{background:#F2EEE4}
+
+    main{padding:24px 32px 64px;max-width:1200px;margin:0 auto}
+
+    section{
+      background:#FFF;border:1px solid #E5E0D5;border-radius:10px;
+      padding:24px 28px;margin-bottom:20px;box-shadow:0 1px 2px rgba(0,0,0,.02);
+    }
+    section h2{
+      margin:0 0 16px;font-size:16px;font-weight:600;
+      display:flex;align-items:center;gap:8px;
+    }
+    section h2 .step-num{
+      display:inline-block;width:22px;height:22px;background:#D9E8F6;
+      border-radius:50%;text-align:center;line-height:22px;font-size:12px;color:#3B6FB6;
+    }
+
+    .form-row{margin-bottom:14px}
+    .form-row label{display:block;font-size:12px;color:#5F5A50;margin-bottom:6px}
+    .form-row input[type="text"],.form-row input[type="password"],
+    .form-row input[type="number"],.form-row textarea,.form-row select{
+      width:100%;padding:8px 12px;border:1px solid #E5E0D5;border-radius:6px;
+      background:#FBFAF5;transition:border-color .15s;
+    }
+    .form-row textarea{min-height:160px;resize:vertical;font-family:inherit}
+    .form-row input:focus,.form-row textarea:focus,.form-row select:focus{
+      outline:none;border-color:#3B6FB6;background:#FFF;
+    }
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+    .btn-primary{
+      background:#3B6FB6;color:#FFF;border:none;padding:10px 24px;
+      border-radius:6px;font-size:14px;font-weight:500;
+    }
+    .btn-primary:hover{background:#2D5A99}
+    .btn-primary:disabled{background:#A8B5C7;cursor:not-allowed}
+    .btn-secondary{
+      background:#FFF;color:#5F5A50;border:1px solid #C5BFB2;
+      padding:8px 16px;border-radius:6px;font-size:13px;
+    }
+    .btn-secondary:hover{background:#F2EEE4}
+
+    #settings-panel{background:#FFF8E7;border-color:#F5DEB8}
+    #settings-panel h2 .step-num{background:#F5DEB8;color:#9C7A3B}
+    .key-section{margin-bottom:18px}
+    .key-section h3{margin:0 0 8px;font-size:13px;color:#9C7A3B}
+    details{margin-top:12px;font-size:12px}
+    details summary{cursor:pointer;color:#5F5A50;user-select:none}
+    details summary:hover{color:#3B6FB6}
+    details .key-help{
+      margin-top:8px;padding:12px 14px;background:#FFF;border-radius:6px;
+      line-height:1.6;color:#5F5A50;
+    }
+    details .key-help code{background:#F2EEE4;padding:1px 5px;border-radius:3px;font-size:11.5px}
+
+    #progress-section{display:none}
+    #progress-section.active{display:block}
+    .progress-step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;color:#5F5A50}
+    .progress-step .indicator{
+      width:18px;height:18px;border-radius:50%;background:#E5E0D5;color:transparent;
+      display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;
+    }
+    .progress-step.running .indicator{background:#3B6FB6;color:#FFF}
+    .progress-step.running .indicator::after{content:"…"}
+    .progress-step.done .indicator{background:#7CB342;color:#FFF}
+    .progress-step.done .indicator::after{content:"✓"}
+    .progress-step.fail .indicator{background:#D66F4D;color:#FFF}
+    .progress-step.fail .indicator::after{content:"!"}
+    .progress-step.running{color:#111;font-weight:500}
+    .progress-step.fail{color:#D66F4D}
+
+    #status-log{
+      margin-top:14px;padding:12px 14px;background:#FBFAF5;border:1px solid #E5E0D5;
+      border-radius:6px;font-family:"SF Mono","Monaco","Consolas",monospace;font-size:11.5px;
+      max-height:200px;overflow-y:auto;color:#5F5A50;white-space:pre-wrap;word-break:break-all;
+    }
+    #status-log .log-error{color:#D66F4D}
+    #status-log .log-success{color:#558B2F}
+
+    #results-section{display:none}
+    #results-section.active{display:block}
+    .blueprint-toggle{font-size:12px;color:#3B6FB6;cursor:pointer;margin-bottom:12px}
+    .blueprint-toggle:hover{text-decoration:underline}
+    #pipeline-blueprint{
+      display:none;background:#F8F6F0;border:1px solid #E5E0D5;border-radius:6px;
+      padding:14px;margin-bottom:18px;font-family:"SF Mono","Monaco","Consolas",monospace;
+      font-size:11.5px;max-height:300px;overflow-y:auto;white-space:pre-wrap;
+    }
+    #pipeline-blueprint.active{display:block}
+
+    footer{
+      padding:18px 32px 24px;color:#A8A29A;font-size:11.5px;
+      border-top:1px solid #E5E0D5;text-align:center;
+    }
+    footer a{color:#5F5A50}
+
+    .hint{color:#A8A29A;font-size:12px;margin-top:6px}
+    .error-banner{
+      background:#FDF4F0;border:1px solid #F5C7B6;color:#A85C44;
+      padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:12.5px;display:none;
+    }
+    .error-banner.active{display:block}
+
+    /* ===== BLOCK:HEAD CSS (kind-specific, injected by composer) ===== */
+    <!-- BLOCK:HEAD -->
+    <!-- BLOCK:HEAD_END -->
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>{{IR.skill_meta.display_name|html}} · 单文件网页版</h1>
+    <div class="subtitle">
+      {{IR.skill_meta.description|html}} ·
+      上游 skill: <a href="{{IR.attribution.source_skill_link|attr}}" target="_blank">{{IR.skill_meta.name|html}}</a>
+      by <a href="{{IR.attribution.source_author_link|attr}}" target="_blank">{{IR.attribution.source_author|html}}</a> ·
+      {{IR.attribution.source_license|html}} ·
+      compiled by <a href="https://github.com/xuejia-mq/skill2web" target="_blank">skill2web</a>
+    </div>
+  </div>
+  <button class="btn-settings" id="btn-toggle-settings">设置</button>
+</header>
+
+<main>
+
+  <!-- ===== 设置面板 ===== -->
+  <section id="settings-panel">
+    <h2><span class="step-num">⚙</span>API 设置(仅存浏览器本地)</h2>
+    <div class="error-banner" id="settings-error"></div>
+
+    <div class="key-section">
+      <h3>① LLM 推理</h3>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="llm-key" placeholder="sk-xxx 或同等格式" autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="llm-model" value="{{IR.browser_runtime.default_endpoints.llm.model|attr}}">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Base URL</label>
+        <input type="text" id="llm-base-url" value="{{IR.browser_runtime.default_endpoints.llm.base_url|attr}}">
+      </div>
+    </div>
+
+    <!-- BLOCK:UI_SETTINGS -->
+    <!-- BLOCK:UI_SETTINGS_END -->
+    <!--
+      上面这个 BLOCK:UI_SETTINGS 由 composer 替换为 image-key section(image-deck / png-canvas)
+      或留空(template-html)。详见 blocks/<kind>.html。
+    -->
+
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="btn-primary" id="btn-save-keys">保存到 localStorage</button>
+      <button class="btn-secondary" id="btn-clear-keys">清空</button>
+    </div>
+
+    <details>
+      <summary>怎么获取 key?</summary>
+      <div class="key-help">
+        <p>本编译产物默认指向 OpenAI 兼容 endpoint。任何 OpenAI 兼容服务都行(OpenAI、DeepSeek、StepFun、智谱、Anthropic 的 direct-browser-access 模式等)。</p>
+        <p>你的输入和生成的内容仅在浏览器和上面配置的 endpoint 之间流动,<strong>不经过 skill2web 作者的任何服务器</strong>。</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== 输入面板 ===== -->
+  <section id="input-section">
+    <h2><span class="step-num">1</span>输入</h2>
+    {{IR.input_schema|render-form-fields}}
+    <div class="actions-row" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" id="btn-generate">开始生成</button>
+      <span class="hint" id="generate-hint">将顺序跑 LLM pipeline,然后渲染输出。</span>
+    </div>
+  </section>
+
+  <!-- ===== 进度面板 ===== -->
+  <section id="progress-section">
+    <h2><span class="step-num">2</span>进度</h2>
+    <div id="progress-steps"></div>
+    <div id="status-log"></div>
+  </section>
+
+  <!-- ===== 结果面板 ===== -->
+  <section id="results-section">
+    <h2><span class="step-num">3</span>结果</h2>
+    <div class="blueprint-toggle" id="blueprint-toggle">▸ 查看 / 隐藏 pipeline JSON</div>
+    <pre id="pipeline-blueprint"></pre>
+
+    <!-- BLOCK:UI -->
+    <!-- BLOCK:UI_END -->
+
+  </section>
+
+</main>
+
+<footer>
+  {{IR.attribution.footer_html|raw}}
+</footer>
+
+<script>
+/* ============================================================
+   skill2web compiled output — runtime
+   Generated from skeleton.html · IR ir_version: 0.2
+   ============================================================ */
+
+/* ===== Input form spec (IR.input_schema) ===== */
+const INPUT_SCHEMA = {{IR.input_schema|js-spec}};
+
+/* ===== LLM pipeline (IR.llm_pipeline) ===== */
+const LLM_PIPELINE = {{IR.llm_pipeline|js-pipeline}};
+
+/* ===== Render config (IR.render — kind-specific, opaque to skeleton) ===== */
+const RENDER_CONFIG = {{IR.render|js-object}};
+
+/* ===== Runtime config ===== */
+const IR_KIND          = {{IR.ir_kind|js-string}};
+const LLM_TIMEOUT_MS   = {{IR.browser_runtime.timeout_ms.llm|js-number}};
+const IMAGE_TIMEOUT_MS = {{IR.browser_runtime.timeout_ms.image|js-number}};
+const IMAGE_RETRY      = {{IR.browser_runtime.retry.image|js-number}};
+const IMAGE_CONCURRENCY= {{IR.browser_runtime.concurrency|js-number}};
+const NEEDS_IMAGE      = {{IR.browser_runtime.image_adapter|js-bool-non-null}};
+
+/* ===== Error UX copy ===== */
+const ERROR_UX = {{IR.error_ux|js-object}};
+
+/* ===== localStorage key (per-skill scoped) ===== */
+const LS_KEY = "skill2web__" + {{IR.skill_meta.name|js-string}} + "__settings__v2";
+
+/* ===== Default endpoints ===== */
+const DEFAULT_ENDPOINTS = {{IR.browser_runtime.default_endpoints|js-object}};
+
+/* ============================================================
+   --- runtime below this line is skill-agnostic ---
+   ============================================================ */
+
+const state = {
+  settings: null,
+  steps: {},          // { <step_id>: { raw: "...", output: { ... } } }
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadSettings();
+  bindUI();
+  if (!state.settings || !state.settings.llmKey || (NEEDS_IMAGE && !state.settings.imageKey)) {
+    document.getElementById("settings-panel").style.display = "block";
+  }
+});
+
+function bindUI() {
+  document.getElementById("btn-toggle-settings").onclick = () => {
+    const p = document.getElementById("settings-panel");
+    p.style.display = (p.style.display === "none") ? "block" : "none";
+  };
+  document.getElementById("btn-save-keys").onclick = saveSettings;
+  document.getElementById("btn-clear-keys").onclick = clearSettings;
+  document.getElementById("btn-generate").onclick = startGenerate;
+  document.getElementById("blueprint-toggle").onclick = () => {
+    document.getElementById("pipeline-blueprint").classList.toggle("active");
+  };
+}
+
+function resetUi() {
+  document.getElementById("progress-section").classList.remove("active");
+  document.getElementById("results-section").classList.remove("active");
+  state.steps = {};
+  document.getElementById("status-log").textContent = "";
+  document.getElementById("progress-steps").innerHTML = "";
+}
+
+/* ===== settings ===== */
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    state.settings = s;
+    setIfExists("llm-key",      s.llmKey || "");
+    setIfExists("llm-base-url", s.llmBaseUrl || DEFAULT_ENDPOINTS.llm.base_url);
+    setIfExists("llm-model",    s.llmModel || DEFAULT_ENDPOINTS.llm.model);
+    if (NEEDS_IMAGE) {
+      setIfExists("image-key",          s.imageKey || "");
+      setIfExists("image-base-url",     s.imageBaseUrl || (DEFAULT_ENDPOINTS.image && DEFAULT_ENDPOINTS.image.base_url) || "");
+      setIfExists("image-model",        s.imageModel || (DEFAULT_ENDPOINTS.image && DEFAULT_ENDPOINTS.image.model) || "");
+      setIfExists("image-endpoint-mode",s.imageEndpointMode || (RENDER_CONFIG.per_item && RENDER_CONFIG.per_item.endpoint_mode) || (RENDER_CONFIG.endpoint_mode) || "generations");
+    }
+  } catch (e) { console.warn("loadSettings", e); }
+}
+function setIfExists(id, val) { const el = document.getElementById(id); if (!el) return; el.value = val; }
+
+function saveSettings() {
+  const s = {
+    llmKey:       document.getElementById("llm-key").value.trim(),
+    llmBaseUrl:   document.getElementById("llm-base-url").value.trim().replace(/\/+$/,""),
+    llmModel:     document.getElementById("llm-model").value.trim(),
+  };
+  if (NEEDS_IMAGE) {
+    s.imageKey          = (document.getElementById("image-key") || {value: ""}).value.trim();
+    s.imageBaseUrl      = (document.getElementById("image-base-url") || {value: ""}).value.trim().replace(/\/+$/,"");
+    s.imageModel        = (document.getElementById("image-model") || {value: ""}).value.trim();
+    s.imageEndpointMode = (document.getElementById("image-endpoint-mode") || {value: "generations"}).value;
+  }
+  const errors = [];
+  if (!s.llmKey)     errors.push("LLM API Key 不能为空");
+  if (!s.llmBaseUrl) errors.push("LLM Base URL 不能为空");
+  if (NEEDS_IMAGE && !s.imageKey)     errors.push("图像 API Key 不能为空");
+  if (NEEDS_IMAGE && !s.imageBaseUrl) errors.push("图像 Base URL 不能为空");
+  const err = document.getElementById("settings-error");
+  if (errors.length) { err.textContent = errors.join("; "); err.classList.add("active"); return; }
+  err.classList.remove("active");
+  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  state.settings = s;
+  const btn = document.getElementById("btn-save-keys");
+  const orig = btn.textContent;
+  btn.textContent = "✓ 已保存"; setTimeout(() => btn.textContent = orig, 1200);
+}
+function clearSettings() {
+  if (!confirm("确认清空所有 API 设置?")) return;
+  localStorage.removeItem(LS_KEY);
+  ["llm-key","image-key"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
+  state.settings = null;
+}
+
+/* ===== logging ===== */
+function log(msg, kind) {
+  const el = document.getElementById("status-log");
+  const ts = new Date().toLocaleTimeString();
+  const cls = kind ? ' class="log-' + kind + '"' : "";
+  el.innerHTML += "<span" + cls + ">[" + ts + "] " + escapeHtml(msg) + "</span>\n";
+  el.scrollTop = el.scrollHeight;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+/* ===== JSONPath-lite: supports "$.field.sub.field" only (no [n] indexing) ===== */
+function jsonpathLite(obj, path) {
+  if (!path || path === "$") return obj;
+  const parts = path.replace(/^\$\.?/, "").split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur == null) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+/* ===== Mustache-lite =====
+   {{key}}, {{nested.key}}, {{#list}}body{{/list}} (where body has {{.}} or {{nested}})
+   Special: {{static_assets.role_locks[item.role]}} dynamic-key dereference.
+   Context shape: { input, steps, item, total, static_assets, ... }                  */
+function mustacheLite(template, ctx) {
+  if (template == null) return "";
+  // {{#list}}body{{/list}}
+  template = template.replace(/{{#([\w.]+)}}([\s\S]*?){{\/\1}}/g, (m, key, body) => {
+    const arr = lookupCtx(ctx, key);
+    if (!Array.isArray(arr)) return "";
+    return arr.map(item => {
+      const innerCtx = Object.assign({}, ctx, {".": item});
+      // {{.}} references current scalar; {{<field>}} keeps outer ctx + scalar binding
+      let rendered = body.replace(/{{\.}}/g, escapeForPrompt(item));
+      rendered = rendered.replace(/{{([\w.]+)}}/g, (mm, k) => {
+        const v = lookupCtx(innerCtx, k);
+        return v == null ? "" : escapeForPrompt(v);
+      });
+      return rendered;
+    }).join("");
+  });
+  // {{path[item.key]}}  dynamic-key dereference (one level)
+  template = template.replace(/{{([\w.]+)\[([\w.]+)\]}}/g, (m, base, dynKey) => {
+    const obj = lookupCtx(ctx, base);
+    const k   = lookupCtx(ctx, dynKey);
+    if (obj == null || k == null) return "";
+    return escapeForPrompt(obj[k] != null ? obj[k] : "");
+  });
+  // {{key}} or {{nested.key}}
+  template = template.replace(/{{([\w.]+)}}/g, (m, key) => {
+    const v = lookupCtx(ctx, key);
+    return v == null ? "" : escapeForPrompt(v);
+  });
+  return template;
+}
+function lookupCtx(ctx, dotted) {
+  return dotted.split(".").reduce((o, k) => (o == null ? o : o[k]), ctx);
+}
+function escapeForPrompt(v) { return (typeof v === "string") ? v : String(v); }
+
+/* ===== JSON extract (LLM output may have prose / fences around it) ===== */
+function extractJson(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) {}
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) { try { return JSON.parse(fence[1]); } catch (e) {} }
+  const start = text.indexOf("{"), end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)); } catch (e) {} }
+  return null;
+}
+
+/* ===== form value collection ===== */
+function collectFormValues() {
+  const out = {};
+  for (const f of INPUT_SCHEMA) {
+    const el = document.getElementById("input-" + f.key);
+    if (!el) continue;
+    let v = el.value;
+    if (f.type === "number") v = parseFloat(v);
+    out[f.key] = v;
+  }
+  return out;
+}
+
+/* ===== progress tracker ===== */
+function renderProgressSteps() {
+  const host = document.getElementById("progress-steps");
+  host.innerHTML = "";
+  for (const step of LLM_PIPELINE) {
+    host.insertAdjacentHTML("beforeend",
+      '<div class="progress-step" id="ps-' + step.id + '">'
+      + '<span class="indicator"></span><span class="label">LLM: ' + escapeHtml(step.id) + '</span></div>');
+  }
+  host.insertAdjacentHTML("beforeend",
+    '<div class="progress-step" id="ps-render">'
+    + '<span class="indicator"></span><span class="label">渲染输出</span></div>');
+}
+function markStep(id, kind) {
+  const el = document.getElementById(id); if (!el) return;
+  el.classList.remove("running","done","fail");
+  el.classList.add(kind);
+}
+
+/* ===== ADAPTER:LLM (composer-injected callLLM definition) ===== */
+<!-- ADAPTER:LLM -->
+<!-- ADAPTER:LLM_END -->
+
+/* ===== ADAPTER:IMAGE (composer-injected callImageAPI; absent for non-image kinds) ===== */
+<!-- ADAPTER:IMAGE -->
+<!-- ADAPTER:IMAGE_END -->
+
+/* ===== concurrency helper (for image-deck) ===== */
+async function runWithConcurrency(items, n, worker) {
+  const queue = items.slice();
+  const runners = new Array(Math.min(n, queue.length)).fill(0).map(async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      try { await worker(item); } catch (e) {}
+    }
+  });
+  await Promise.all(runners);
+}
+
+/* ===== pipeline runner ===== */
+async function runLlmStep(step, inputValues) {
+  const ctx = { input: inputValues, steps: state.steps };
+  const sys = mustacheLite(step.system_prompt_template, ctx);
+  const usr = mustacheLite(step.user_prompt_template, ctx);
+  const messages = [];
+  if (sys) messages.push({ role: "system", content: sys });
+  messages.push({ role: "user", content: usr });
+  const raw = await callLLM(messages, { temperature: step.temperature, json_mode: step.json_mode });
+  let output;
+  if (step.json_mode === "off") {
+    output = { text: raw };
+  } else {
+    output = extractJson(raw);
+    if (!output) {
+      throw new Error(ERROR_UX.json_parse + "\n原始片段: " + raw.slice(0, 200));
+    }
+  }
+  state.steps[step.id] = { raw: raw, output: output };
+  return output;
+}
+
+async function startGenerate() {
+  if (!state.settings || !state.settings.llmKey || (NEEDS_IMAGE && !state.settings.imageKey)) {
+    alert(ERROR_UX.missing_llm_key || "请先在 [设置] 里填好 API key。");
+    document.getElementById("settings-panel").style.display = "block";
+    return;
+  }
+  const inputValues = collectFormValues();
+  const missing = INPUT_SCHEMA.filter(f => f.required && (inputValues[f.key] === undefined || inputValues[f.key] === ""));
+  if (missing.length) { alert("请填写: " + missing.map(f => f.label).join("、")); return; }
+
+  document.getElementById("btn-generate").disabled = true;
+  document.getElementById("progress-section").classList.add("active");
+  document.getElementById("results-section").classList.remove("active");
+  document.getElementById("status-log").textContent = "";
+  renderProgressSteps();
+
+  try {
+    for (const step of LLM_PIPELINE) {
+      markStep("ps-" + step.id, "running");
+      log("step [" + step.id + "] 调 LLM ...");
+      try {
+        await runLlmStep(step, inputValues);
+        markStep("ps-" + step.id, "done");
+        log("step [" + step.id + "] 完成", "success");
+      } catch (e) {
+        markStep("ps-" + step.id, "fail");
+        log("step [" + step.id + "] 失败: " + e.message, "error");
+        throw e;
+      }
+    }
+    document.getElementById("pipeline-blueprint").textContent = JSON.stringify(state.steps, null, 2);
+
+    markStep("ps-render", "running");
+    document.getElementById("results-section").classList.add("active");
+    await renderOutput();   /* defined by BLOCK:RENDER */
+    markStep("ps-render", "done");
+    log("全部完成", "success");
+  } catch (err) {
+    log("致命错误: " + err.message, "error");
+    console.error(err);
+  } finally {
+    document.getElementById("btn-generate").disabled = false;
+  }
+}
+
+/* ===== BLOCK:RENDER (composer-injected; defines async renderOutput()) ===== */
+<!-- BLOCK:RENDER -->
+<!-- BLOCK:RENDER_END -->
+
+</script>
+</body>
+</html>

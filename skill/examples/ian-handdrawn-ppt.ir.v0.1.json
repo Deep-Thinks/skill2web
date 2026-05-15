@@ -1,0 +1,199 @@
+{
+  "_comment": "Reverse-engineered IR for the hero-case manual compile of ian-handdrawn-ppt. This is what skill2web v0.1 compiler should produce when given the upstream repo. Used as a regression target: a fresh compile run should yield a semantically equivalent IR (modulo input_schema customizations). NOTE: this IR is image-deck-shaped (see ir_kind). It is NOT a template for non-image-deck skills — those need their own IR shape, validated by a separate hand-compile.",
+  "ir_version": "0.1",
+  "ir_kind": "image-deck",
+  "skill_meta": {
+    "name": "ian-handdrawn-ppt",
+    "display_name": "Ian Handdrawn PPT",
+    "description": "Turn an article / Markdown / outline into a Chinese handdrawn technical PPT-style image deck.",
+    "source": {
+      "type": "github",
+      "url": "https://github.com/helloianneo/ian-handdrawn-ppt",
+      "rev": "main",
+      "path_inside_repo": "ian-handdrawn-ppt"
+    },
+    "license": "MIT",
+    "author": "Ian",
+    "author_links": [
+      "https://github.com/helloianneo",
+      "https://ianneo.xyz"
+    ]
+  },
+  "static_assets": {
+    "style_lock": "Refined commercial Chinese handdrawn technical article/PPT illustration.\nComplete raster image on very light warm white paper, near #FBFAF5, with extremely subtle grain.\nNo full-page border and no rectangular frame unless explicitly requested.\nUpper-left small page number in handwritten style.\nCentered medium Chinese title with one pale blue handdrawn underline.\nSmall subtitle under title when needed.\nFor body pages, keep title size optically consistent across pages; do not enlarge short titles.\nFine black ink and pencil linework, delicate hatching, stable but slightly irregular.\nMuted pastel marker labels: pale blue, sage green, peach, lavender.\nSparse corner construction marks only: faint pale grey grid, dots, ruler ticks, measurement lines.\nGenerous negative space, calm premium teaching-note feeling.\nMostly small object-based diagrams; no more than one tiny person, placed far in a corner.\nProps should be blank or contain only simple line marks unless their text appears in Required text only.\nAvoid full-page border, yellow paper, beige paper, giant fonts, cheap poster look, childish doodles, many characters, thick marker strokes, dense bullets, corporate template style, shadows, gradients, neon, watermark, gibberish text, English filler.",
+    "role_locks": {
+      "cover": "Page role: cover image.\nCanvas: 21:9 ultra-wide.\nTitle may be medium-large but still elegant and restrained.\nMain metaphor occupies about 50-55% of page width.\nNo page number unless requested.",
+      "body": "Page role: body illustration.\nCanvas: 16:9.\nThis is not a cover page.\nTitle is medium and restrained, optically consistent with the other body pages.\nEven if the title is short, do not enlarge it.\nCentral diagram occupies about 50-60% of page width and 35-45% of page height."
+    },
+    "reference_clauses": [
+      "Match the approved article-illustration shell: near-white warm paper, no full-page border, upper-left small page number, centered restrained handwritten Chinese title, one pale blue underline, small subtitle beneath, sparse corner grid/dot construction marks, fine ink-and-pencil object drawings with delicate hatching, small refined central diagram, and large negative space. Keep the outer shell consistent across pages; only vary the central diagram layout according to the content."
+    ],
+    "archetypes": [
+      "cover-metaphor",
+      "single-concept",
+      "left-right-contrast",
+      "transformation-contrast",
+      "horizontal-process",
+      "circular-mechanism",
+      "branching-map",
+      "classification-map",
+      "matrix-table",
+      "main-metaphor",
+      "annotation",
+      "takeaway"
+    ],
+    "theme_tokens": {
+      "paper": "#FBFAF5",
+      "ink": "#111111",
+      "size_by_role": {
+        "cover": "1536x1024",
+        "body": "1536x1024"
+      },
+      "_note": "Upstream theme-tokens.json prefers 2520x1080 (21:9) for cover and 1920x1080 (16:9) for body. gpt-image-2 does not natively support those — 1536x1024 (~3:2) is the closest landscape. v0.2 may add client-side canvas crop to true 21:9."
+    }
+  },
+  "input_schema": [
+    {
+      "key": "content",
+      "type": "textarea",
+      "label": "文章 / Markdown / 大纲",
+      "required": true,
+      "placeholder": "粘贴文章或写主题"
+    },
+    {
+      "key": "audience",
+      "type": "text",
+      "label": "目标读者（可选）",
+      "required": false,
+      "placeholder": "例：有基础的工程师 / 协会成员"
+    },
+    {
+      "key": "scenario",
+      "type": "select",
+      "label": "使用场景",
+      "required": true,
+      "options": [
+        { "value": "teaching", "label": "教学课件" },
+        { "value": "explain", "label": "公众科普" },
+        { "value": "product", "label": "产品 / 方案说明" },
+        { "value": "share", "label": "分享 / 朋友圈配图" },
+        { "value": "report", "label": "汇报" }
+      ],
+      "default": "teaching"
+    },
+    {
+      "key": "length",
+      "type": "select",
+      "label": "页数",
+      "required": true,
+      "options": [
+        { "value": 5, "label": "5 页（短想法）" },
+        { "value": 8, "label": "8 页（推荐）" },
+        { "value": 10, "label": "10 页" },
+        { "value": 12, "label": "12 页（一篇文章）" }
+      ],
+      "default": 8
+    },
+    {
+      "key": "output_style",
+      "type": "select",
+      "label": "视觉组合",
+      "required": true,
+      "options": [
+        { "value": "body-only", "label": "仅 body 16:9" },
+        { "value": "cover-plus-body", "label": "cover + body" }
+      ],
+      "default": "body-only"
+    }
+  ],
+  "llm_phase": {
+    "model_hint": "deepseek-chat",
+    "temperature": 0.4,
+    "json_mode": "prompt-only",
+    "system_prompt_template": "你是 Ian Handdrawn PPT skill 的拆解器。读用户的内容（文章 / Markdown / 大纲 / 主题），输出一个 deck spine 的 JSON，供后续图像生成器为每张 slide 生成中文手绘风技术 PPT 页面图像。\n\n输出严格 JSON，结构如下：\n{\n  \"deck_type\": \"teaching | persuasive | report | product | knowledge-card\",\n  \"topic\": \"<主题>\",\n  \"audience\": \"<受众>\",\n  \"slides\": [\n    {\n      \"role\": \"cover | body\",\n      \"title\": \"<5-12 个汉字的短中文标题>\",\n      \"subtitle\": \"<可选 3-12 个汉字>\",\n      \"archetype\": \"cover-metaphor | single-concept | left-right-contrast | transformation-contrast | horizontal-process | circular-mechanism | branching-map | classification-map | matrix-table | main-metaphor | annotation | takeaway\",\n      \"main_point\": \"<一句话总结这一页的判断>\",\n      \"composition\": \"<一段英文，描述这一页中央示意图的具体布局：几个对象、左右还是流程、有什么手绘元素、用什么 pastel 颜色标记。不要描述边框/页码/纸张 —— 那些由 deck style lock 统一处理。>\",\n      \"required_text\": [\"<图里所有出现的中文文字，一项一行，每项 2-12 个字>\"]\n    }\n  ]\n}\n\n规则：\n1. slide 数量必须恰好等于用户指定的页数。\n2. archetype 必须从给定列表里选。封面默认 cover-metaphor。\n3. 每页只有一个主要观点（main_point），不堆 bullet。\n4. required_text 必须短而精确，每项 ≤ 12 汉字，整页加起来 ≤ 6 项，避免出现 LLM 编出来的填充文字。\n5. 标题不要超过 12 个汉字。\n6. composition 必须用英文写，因为后续会送给图像模型。\n7. 不要输出 JSON 之外的任何文字，不要 markdown 代码块包裹。如果模型限制需要包裹，请用 ```json ... ```。",
+    "user_prompt_template": "请生成 deck spine。\n\n【场景】{{scenario}}\n【受众】{{audience}}\n【页数】{{length}}（{{output_style}}）\n\n【内容 / 大纲】\n{{content}}",
+    "expected_output_schema": {
+      "type": "object",
+      "required": ["deck_type", "slides"],
+      "properties": {
+        "deck_type": { "type": "string" },
+        "topic":     { "type": "string" },
+        "audience":  { "type": "string" },
+        "slides": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["role", "title", "archetype", "main_point"],
+            "properties": {
+              "role":          { "type": "string", "enum": ["cover", "body"] },
+              "title":         { "type": "string", "maxLength": 24 },
+              "subtitle":      { "type": "string" },
+              "archetype":     { "type": "string" },
+              "main_point":    { "type": "string" },
+              "composition":   { "type": "string" },
+              "required_text": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "render_phase": {
+    "kind": "image-per-slide",
+    "iterator": "$.slides",
+    "per_item": {
+      "prompt_template": "Use case: Chinese handdrawn technical article/PPT visual.\nAsset type: one complete Chinese handdrawn technical PPT page image, final raster page.\nCreate page {{item.idx}}/{{total}} of a coherent deck.\nPage number text exactly: {{item.idx}} / {{total}}\n\n{{static_assets.role_locks.body}}\n\nTitle exactly: {{item.title}}\n{{#item.subtitle_block}}Subtitle exactly: {{item.subtitle}}{{/item.subtitle_block}}\nArchetype: {{item.archetype}}\nMain point: {{item.main_point}}\n\nApply the deck style lock:\n{{static_assets.style_lock}}\n\nReference match clause:\n{{static_assets.reference_clauses.0}}\n\nComposition:\n{{item.composition}}\n\nRequired text only:\n{{#item.required_text}}- {{.}}\n{{/item.required_text}}\n\nAvoid:\nfull-page border, yellow paper, beige paper, oversized central objects, oversized body-page title, heavy bottom boxes, extra text, invented micro-labels, gibberish, English, watermark, crowded composition, many people, childish cartoons, thick outlines, saturated colors, corporate template look.",
+      "size_by_role": {
+        "cover": "1536x1024",
+        "body": "1536x1024"
+      },
+      "api": "openai-images-compat",
+      "endpoint_mode": "generations"
+    }
+  },
+  "browser_runtime": {
+    "llm_adapter": "openai-chat-compat",
+    "image_adapter": "openai-images-compat",
+    "default_endpoints": {
+      "llm": {
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat"
+      },
+      "image": {
+        "base_url": "https://image.token-recyclebin.com/v1",
+        "model": "gpt-image-2"
+      }
+    },
+    "concurrency": 3,
+    "timeout_ms": {
+      "llm": 120000,
+      "image": 180000
+    },
+    "retry": {
+      "llm": 0,
+      "image": 1
+    },
+    "extra_libs": []
+  },
+  "error_ux": {
+    "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+    "missing_image_key": "请先在 [设置] 里填图像 API Key。",
+    "llm_4xx": "LLM 调用被拒绝。常见原因：key 失效 / 余额不足 / 不支持该模型。",
+    "llm_5xx": "LLM 服务暂时不可用，过几秒再试。",
+    "llm_timeout": "LLM 响应超时（>120s）。检查网络，或换 base_url。",
+    "image_4xx": "图像 API 调用失败。可能是 endpoint 不支持当前 mode（/generations vs /edits）。试试在 [设置] 切换。",
+    "image_5xx": "图像服务繁忙，会自动重试一次。",
+    "image_timeout": "图像生成超时（>180s）。点这一张的 [重试]。",
+    "cors": "浏览器拒绝了跨域请求。这个 endpoint 可能不允许从网页直接调用 —— 你需要换一个 CORS 友好的 endpoint，或起一个本地代理。",
+    "json_parse": "LLM 没返回有效 JSON。点 [看 prompt] 查看，或换更强的模型重试。"
+  },
+  "attribution": {
+    "source_skill_link": "https://github.com/helloianneo/ian-handdrawn-ppt",
+    "source_author": "Ian",
+    "source_author_link": "https://github.com/helloianneo",
+    "source_license": "MIT",
+    "source_license_text_file": "LICENSE",
+    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web' target='_blank'>skill2web</a> 从 <a href='https://github.com/helloianneo/ian-handdrawn-ppt' target='_blank'>ian-handdrawn-ppt</a>（Ian · MIT）编译。你的输入内容和生成的图像仅在浏览器和你配置的 LLM / 图像供应商之间流动。"
+  }
+}

@@ -19,6 +19,11 @@ venv/
 
 # 构建产物
 dist/
+!dist/*.README.md
+!dist/*.REFUSAL.md
 build/
 *.log
 .context/
+
+# Playwright MCP 实测 artifact (本地浏览器测试快照, 不入仓)
+.playwright-mcp/

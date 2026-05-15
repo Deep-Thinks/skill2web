@@ -1,0 +1,150 @@
+<!--
+  Block: png-canvas
+  Composer 用本文件填充 skeleton.html 的:
+    BLOCK:HEAD          poster CSS
+    BLOCK:UI_SETTINGS   image-key 设置区块(同 image-deck)
+    BLOCK:UI            <img id="poster"> + 操作按钮
+    BLOCK:RENDER        async renderOutput() — 单图生成
+  ADAPTER:LLM   = openai-chat-compat (skeleton 注入)
+  ADAPTER:IMAGE = openai-images-compat (skeleton 注入)
+-->
+
+<!-- BLOCK:HEAD -->
+.poster-wrap{
+  display:flex;justify-content:center;align-items:center;
+  background:#F2EEE4;border:1px solid #E5E0D5;border-radius:8px;
+  padding:20px;min-height:200px;position:relative;overflow:hidden;
+}
+.poster-wrap img{max-width:100%;max-height:80vh;border-radius:6px;display:block}
+.poster-wrap.running::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,#FFF8 50%,transparent);
+  animation:shimmer 1.6s infinite;
+}
+.poster-wrap.fail{border-color:#F5C7B6;background:#FDF4F0;color:#D66F4D}
+.poster-wrap .placeholder{color:#A8A29A;font-size:13px}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+<!-- BLOCK:HEAD_END -->
+
+<!-- BLOCK:UI_SETTINGS -->
+<div class="key-section">
+  <h3>② 图像生成</h3>
+  <div class="form-grid">
+    <div class="form-row">
+      <label>API Key</label>
+      <input type="password" id="image-key" placeholder="sk-xxx" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label>Model</label>
+      <input type="text" id="image-model" value="{{IR.browser_runtime.default_endpoints.image.model|attr}}">
+    </div>
+  </div>
+  <div class="form-grid">
+    <div class="form-row">
+      <label>Base URL</label>
+      <input type="text" id="image-base-url" value="{{IR.browser_runtime.default_endpoints.image.base_url|attr}}">
+    </div>
+    <div class="form-row">
+      <label>Endpoint 模式</label>
+      <select id="image-endpoint-mode">
+        <option value="generations">/images/generations</option>
+        <option value="edits">/images/edits(带空白参考图)</option>
+      </select>
+    </div>
+  </div>
+</div>
+<!-- BLOCK:UI_SETTINGS_END -->
+
+<!-- BLOCK:UI -->
+<div class="poster-wrap" id="poster-wrap">
+  <span class="placeholder">等待生成...</span>
+</div>
+<div class="actions-row" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+  <button class="btn-secondary" id="btn-download" disabled>下载 PNG</button>
+  <button class="btn-secondary" id="btn-retry">重试</button>
+  <button class="btn-secondary" id="btn-show-prompt">看 prompt</button>
+  <button class="btn-secondary" id="btn-reset">从头开始</button>
+</div>
+<!-- BLOCK:UI_END -->
+
+<!-- BLOCK:RENDER -->
+const __poster = { b64: null, error: null, promptText: "", title: "" };
+
+async function renderOutput() {
+  document.getElementById("btn-download").onclick = () => {
+    if (!__poster.b64) return;
+    const fn = "poster-" + sanitizeFn(__poster.title || "img") + ".png";
+    const a = document.createElement("a");
+    a.href = "data:image/png;base64," + __poster.b64; a.download = fn;
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  document.getElementById("btn-retry").onclick = async () => {
+    await generatePoster();
+  };
+  document.getElementById("btn-show-prompt").onclick = () => {
+    if (!__poster.promptText) { alert("还没拼好 prompt"); return; }
+    const w = window.open("", "_blank");
+    if (!w) { alert(__poster.promptText); return; }
+    w.document.write('<pre style="font:13px ui-monospace,monospace;padding:24px;white-space:pre-wrap">' + escapeHtml(__poster.promptText) + '</pre>');
+  };
+  document.getElementById("btn-reset").onclick = () => {
+    resetUi();
+    __poster.b64 = null; __poster.error = null; __poster.promptText = "";
+    const w = document.getElementById("poster-wrap");
+    w.className = "poster-wrap";
+    w.innerHTML = '<span class="placeholder">等待生成...</span>';
+    document.getElementById("btn-download").disabled = true;
+  };
+
+  // compositing="none" 是 v0.2 唯一支持
+  if (RENDER_CONFIG.compositing && RENDER_CONFIG.compositing !== "none") {
+    throw new Error("png-canvas v0.2 仅支持 compositing=none, 当前: " + RENDER_CONFIG.compositing);
+  }
+
+  await generatePoster();
+}
+
+async function generatePoster() {
+  const wrap = document.getElementById("poster-wrap");
+  wrap.className = "poster-wrap running";
+  wrap.innerHTML = '<span class="placeholder">生成中…</span>';
+  document.getElementById("btn-download").disabled = true;
+
+  // build prompt with mustache-lite over (input + steps + static_assets + bound root)
+  const root = RENDER_CONFIG.data_binding
+    ? jsonpathLite({ steps: state.steps }, RENDER_CONFIG.data_binding)
+    : null;
+  const ctx = Object.assign({}, root || {}, {
+    input: __collectFormCached(),
+    steps: state.steps,
+    static_assets: RENDER_CONFIG.static_assets || {},
+  });
+  const promptText = mustacheLite(RENDER_CONFIG.prompt_template, ctx);
+  __poster.promptText = promptText;
+  // try to grab a 'title' field for filename if present
+  __poster.title = (root && (root.title || root.heading)) || "";
+
+  let lastErr;
+  for (let attempt = 0; attempt <= IMAGE_RETRY; attempt++) {
+    try {
+      log((attempt === 0 ? "首次" : "重试 " + attempt) + " 调图像 API ...");
+      const b64 = await callImageAPI(promptText, RENDER_CONFIG.canvas_size, RENDER_CONFIG.endpoint_mode);
+      __poster.b64 = b64;
+      wrap.className = "poster-wrap";
+      wrap.innerHTML = '<img alt="generated poster" src="data:image/png;base64,' + b64 + '">';
+      document.getElementById("btn-download").disabled = false;
+      log("完成", "success");
+      return;
+    } catch (e) {
+      lastErr = e;
+      log("失败: " + e.message, "error");
+    }
+  }
+  __poster.error = lastErr ? lastErr.message : "未知";
+  wrap.className = "poster-wrap fail";
+  wrap.innerHTML = '<span>失败: ' + escapeHtml((__poster.error).slice(0, 120)) + '</span>';
+}
+
+function __collectFormCached() { return collectFormValues(); }
+function sanitizeFn(s) { return String(s || "untitled").replace(/[\\\/:*?"<>|\s]+/g, "_").slice(0, 40); }
+<!-- BLOCK:RENDER_END -->

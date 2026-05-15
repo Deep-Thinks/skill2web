@@ -1,0 +1,605 @@
+<!--
+  ============================================================
+  hero case 2: synthetic-essay-polisher
+  template-html shape — manual hand-compile (Hero Case 2)
+  ============================================================
+  作为 skill2web v0.2 Phase B 的设计输入。手工写,不依赖 v0.2 composer。
+  Phase B 实装后,自动 composer 输出应当与本文件 JS 行为语义等价。
+
+  哲学: 跟 ian-handdrawn-ppt v0.1 hero case 一样,**不**用外部 CDN。
+  marked.js / DOMPurify 在 Phase B 才正式 inline;hero case 用极简
+  自写的 markdown subset 渲染 + DOM 净化(白名单 tag/attr)。这是为了
+  在"先有手工版才有 schema"阶段验证 IR 字段是否够用,而不是验证 lib 选择。
+
+  License: MIT (synthetic, no upstream attribution chain)
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>合成 · 长文润色 (synthetic-essay-polisher)</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",
+                  "Helvetica Neue",Helvetica,Arial,sans-serif;
+      background:#FBFAF5;color:#111;line-height:1.55;font-size:14px;min-height:100vh;
+    }
+    a{color:#3B6FB6;text-decoration:none}
+    a:hover{text-decoration:underline}
+    button{cursor:pointer;font:inherit}
+    input,textarea,select{font:inherit;color:inherit}
+
+    header{
+      padding:24px 32px 18px;border-bottom:1px solid #E5E0D5;background:#FBFAF5;
+      display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;
+      position:sticky;top:0;z-index:50;
+    }
+    header h1{margin:0;font-size:22px;font-weight:600}
+    header .subtitle{font-size:12px;color:#5F5A50;margin-top:4px}
+    .btn-settings{background:transparent;border:1px solid #C5BFB2;color:#5F5A50;padding:6px 14px;border-radius:6px;font-size:12px}
+
+    main{padding:24px 32px 64px;max-width:920px;margin:0 auto}
+
+    section{background:#FFF;border:1px solid #E5E0D5;border-radius:10px;padding:24px 28px;margin-bottom:20px;box-shadow:0 1px 2px rgba(0,0,0,.02)}
+    section h2{margin:0 0 16px;font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+    section h2 .step-num{display:inline-block;width:22px;height:22px;background:#D9E8F6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;color:#3B6FB6}
+
+    .form-row{margin-bottom:14px}
+    .form-row label{display:block;font-size:12px;color:#5F5A50;margin-bottom:6px}
+    .form-row input[type="text"],.form-row input[type="password"],.form-row textarea,.form-row select{
+      width:100%;padding:8px 12px;border:1px solid #E5E0D5;border-radius:6px;background:#FBFAF5;
+    }
+    .form-row textarea{min-height:200px;resize:vertical;font-family:inherit}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+    .btn-primary{background:#3B6FB6;color:#FFF;border:none;padding:10px 24px;border-radius:6px;font-size:14px;font-weight:500}
+    .btn-primary:hover{background:#2D5A99}
+    .btn-primary:disabled{background:#A8B5C7;cursor:not-allowed}
+    .btn-secondary{background:#FFF;color:#5F5A50;border:1px solid #C5BFB2;padding:8px 16px;border-radius:6px;font-size:13px}
+    .btn-secondary:hover{background:#F2EEE4}
+
+    #settings-panel{background:#FFF8E7;border-color:#F5DEB8}
+    #settings-panel h2 .step-num{background:#F5DEB8;color:#9C7A3B}
+
+    #progress-section,#results-section{display:none}
+    #progress-section.active,#results-section.active{display:block}
+
+    .progress-step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;color:#5F5A50}
+    .progress-step .indicator{width:18px;height:18px;border-radius:50%;background:#E5E0D5;color:transparent;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+    .progress-step.running .indicator{background:#3B6FB6;color:#FFF}
+    .progress-step.running .indicator::after{content:"…"}
+    .progress-step.done .indicator{background:#7CB342;color:#FFF}
+    .progress-step.done .indicator::after{content:"✓"}
+    .progress-step.fail .indicator{background:#D66F4D;color:#FFF}
+    .progress-step.fail .indicator::after{content:"!"}
+    .progress-step.running{color:#111;font-weight:500}
+
+    #status-log{margin-top:14px;padding:12px 14px;background:#FBFAF5;border:1px solid #E5E0D5;border-radius:6px;font-family:"SF Mono","Monaco","Consolas",monospace;font-size:11.5px;max-height:200px;overflow-y:auto;color:#5F5A50;white-space:pre-wrap;word-break:break-all}
+    #status-log .log-error{color:#D66F4D}
+    #status-log .log-success{color:#558B2F}
+
+    /* === article styling === */
+    .article-actions{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+    article#article{
+      background:#FFF;border:1px solid #E5E0D5;border-radius:8px;
+      padding:36px 44px;font-size:15px;line-height:1.75;color:#222;
+    }
+    article#article h1{font-size:24px;margin:0 0 6px;font-weight:700}
+    article#article .article-meta{font-size:12px;color:#5F5A50;margin-bottom:18px}
+    article#article .article-abstract{
+      background:#FBFAF5;border-left:3px solid #3B6FB6;
+      padding:14px 18px;font-size:13.5px;color:#444;margin-bottom:24px;border-radius:0 6px 6px 0;
+    }
+    article#article h2{font-size:18px;margin:28px 0 10px;border-bottom:1px solid #EEE;padding-bottom:6px}
+    article#article h3{font-size:15.5px;margin:22px 0 8px}
+    article#article p{margin:8px 0 14px}
+    article#article code{background:#F2EEE4;padding:1px 5px;border-radius:3px;font-size:12.5px}
+    article#article pre{background:#F8F6F0;padding:12px 14px;border-radius:6px;overflow-x:auto;font-size:12.5px}
+    article#article pre code{background:transparent;padding:0}
+    article#article ul,article#article ol{margin:8px 0 14px;padding-left:24px}
+    article#article blockquote{border-left:3px solid #D9C7A6;background:#FBF7EB;padding:8px 14px;margin:12px 0;color:#5F5A50}
+
+    @media print {
+      header, #settings-panel, #input-section, #progress-section, .article-actions, footer { display: none !important; }
+      body { background: #FFF; }
+      main { padding: 0; max-width: none; }
+      section { border: none; box-shadow: none; padding: 0; margin: 0; }
+      article#article { border: none; padding: 0; }
+    }
+
+    footer{padding:18px 32px 24px;color:#A8A29A;font-size:11.5px;border-top:1px solid #E5E0D5;text-align:center}
+    .hint{color:#A8A29A;font-size:12px;margin-top:6px}
+    .error-banner{background:#FDF4F0;border:1px solid #F5C7B6;color:#A85C44;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:12.5px;display:none}
+    .error-banner.active{display:block}
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>长文润色 · 单文件网页版</h1>
+    <div class="subtitle">合成 hero case · MIT · for skill2web v0.2 Phase B 设计输入</div>
+  </div>
+  <button class="btn-settings" id="btn-toggle-settings">设置</button>
+</header>
+
+<main>
+
+  <!-- ===== 设置面板 ===== -->
+  <section id="settings-panel">
+    <h2><span class="step-num">⚙</span>API 设置(仅存浏览器本地)</h2>
+    <div class="error-banner" id="settings-error"></div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>LLM API Key</label>
+        <input type="password" id="llm-key" placeholder="sk-xxx">
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" id="llm-model" value="deepseek-chat">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Base URL</label>
+      <input type="text" id="llm-base-url" value="https://api.deepseek.com/v1">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="btn-primary" id="btn-save-keys">保存</button>
+      <button class="btn-secondary" id="btn-clear-keys">清空</button>
+    </div>
+  </section>
+
+  <!-- ===== 输入面板 ===== -->
+  <section id="input-section">
+    <h2><span class="step-num">1</span>输入</h2>
+    <div class="form-row">
+      <label>原文 / 草稿 *</label>
+      <textarea id="input-original_text" placeholder="粘贴粗稿,或写主题大纲。"></textarea>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>目标读者 (可选)</label>
+        <input type="text" id="input-audience" placeholder="例:技术 manager / 普通读者">
+      </div>
+      <div class="form-row">
+        <label>文体</label>
+        <select id="input-tone">
+          <option value="academic">学术 (academic)</option>
+          <option value="blog" selected>博客 (blog)</option>
+          <option value="technical">技术报告 (technical)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>语言</label>
+      <select id="input-language">
+        <option value="zh" selected>中文</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" id="btn-generate">开始润色</button>
+      <span class="hint">单次 LLM 调用,大约 10-30 秒。</span>
+    </div>
+  </section>
+
+  <!-- ===== 进度面板 ===== -->
+  <section id="progress-section">
+    <h2><span class="step-num">2</span>进度</h2>
+    <div class="progress-step" id="ps-polish">
+      <span class="indicator"></span><span class="label">LLM: polish</span>
+    </div>
+    <div class="progress-step" id="ps-render">
+      <span class="indicator"></span><span class="label">渲染输出</span>
+    </div>
+    <div id="status-log"></div>
+  </section>
+
+  <!-- ===== 结果面板 ===== -->
+  <section id="results-section">
+    <h2><span class="step-num">3</span>结果</h2>
+    <div class="article-actions">
+      <button class="btn-secondary" id="btn-print">打印 / 存 PDF</button>
+      <button class="btn-secondary" id="btn-copy-md">复制 markdown</button>
+      <button class="btn-secondary" id="btn-download-md">下载 .md</button>
+      <button class="btn-secondary" id="btn-show-prompt">看 prompt</button>
+    </div>
+    <article id="article"></article>
+  </section>
+
+</main>
+
+<footer>
+  本网页是 <a href="https://github.com/xuejia-mq/skill2web" target="_blank">skill2web</a> v0.2 Phase B 的设计输入(合成 hero case)。MIT。无外部署名传递。
+</footer>
+
+<script>
+/* ============================================================
+   synthetic-essay-polisher · runtime
+   Mirror of what skill2web v0.2 template-html block + skeleton
+   should generate. Hand-written for Phase B IR design.
+   ============================================================ */
+
+const LS_KEY = "skill2web__synthetic-essay-polisher__settings__v2";
+
+const ERROR_UX = {
+  missing_llm_key: "请先在 [设置] 里填 LLM API Key。",
+  llm_4xx: "LLM 调用被拒绝。常见原因: key 失效 / 余额不足 / 不支持该模型。",
+  llm_5xx: "LLM 服务暂时不可用,过几秒再试。",
+  llm_timeout: "LLM 响应超时(>120s)。检查网络,或换 base_url。",
+  cors: "浏览器拒绝了跨域请求。这个 endpoint 可能不允许从网页直接调用。",
+  json_parse: "LLM 没返回有效 JSON。点 [看 prompt] 查看,或换更强的模型重试。",
+};
+
+const LLM_TIMEOUT_MS = 120000;
+
+const SYSTEM_PROMPT_TEMPLATE = "你是一个把用户粗稿润色为结构化文章的助手。\n\n【目标读者】{{input.audience}}\n【文体】{{input.tone}}\n【语言】{{input.language}}\n\n输出严格 JSON,结构如下:\n{\n  \"title\": \"<最终标题>\",\n  \"abstract\": \"<2-4 句摘要>\",\n  \"sections\": [\n    {\n      \"heading\": \"<小节标题>\",\n      \"level\": 2,            // 2 或 3, 用于 markdown 中的 ## 或 ###\n      \"body_md\": \"<这一段的 markdown 主体, 可含段落 / 列表 / 引用 / 代码块>\"\n    }\n  ]\n}\n\n规则:\n1. 不要新增用户没说过的事实。润色 = 重组结构 + 改写流畅,不是续写。\n2. 输出 ONLY JSON, 不要 markdown 代码块包裹(若模型限制必须包,可用 ```json ... ```)。\n3. body_md 是 markdown 子集: 段落、`#` 标题、`-`/`1.` 列表、`> ` 引用、` ``` ` 代码块、 *斜体*/**粗体**/`代码`/[文字](url)。\n4. sections 数量 3-7 个,heading 短而准。\n5. 文体=academic 时严谨克制,blog 时口语化,technical 时多用例子与代码块。\n";
+
+const USER_PROMPT_TEMPLATE = "请把以下原文润色为结构化文章:\n\n{{input.original_text}}";
+
+const state = {
+  settings: null,
+  steps: {},     // { polish: { raw, output: { title, abstract, sections } } }
+  lastMarkdown: "",
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadSettings();
+  bindUI();
+  if (!state.settings || !state.settings.llmKey) {
+    document.getElementById("settings-panel").style.display = "block";
+  }
+});
+
+function bindUI() {
+  document.getElementById("btn-toggle-settings").onclick = () => {
+    const p = document.getElementById("settings-panel");
+    p.style.display = (p.style.display === "none") ? "block" : "none";
+  };
+  document.getElementById("btn-save-keys").onclick = saveSettings;
+  document.getElementById("btn-clear-keys").onclick = clearSettings;
+  document.getElementById("btn-generate").onclick = startGenerate;
+  document.getElementById("btn-print").onclick = () => window.print();
+  document.getElementById("btn-copy-md").onclick = () => {
+    navigator.clipboard.writeText(state.lastMarkdown).then(
+      () => log("已复制 markdown 到剪贴板", "success"),
+      (e) => log("复制失败: " + e.message, "error"));
+  };
+  document.getElementById("btn-download-md").onclick = () => {
+    const blob = new Blob([state.lastMarkdown], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "polished.md";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  document.getElementById("btn-show-prompt").onclick = () => {
+    const inp = collectFormValues();
+    const ctx = { input: inp };
+    const sys = mustacheLite(SYSTEM_PROMPT_TEMPLATE, ctx);
+    const usr = mustacheLite(USER_PROMPT_TEMPLATE, ctx);
+    const w = window.open("", "_blank");
+    if (!w) { alert(sys + "\n\n---\n\n" + usr); return; }
+    w.document.write('<pre style="font:13px ui-monospace,monospace;padding:24px;white-space:pre-wrap">'
+      + escapeHtml("=== SYSTEM ===\n" + sys + "\n\n=== USER ===\n" + usr) + '</pre>');
+  };
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    state.settings = s;
+    setIfExists("llm-key", s.llmKey || "");
+    setIfExists("llm-base-url", s.llmBaseUrl || "https://api.deepseek.com/v1");
+    setIfExists("llm-model", s.llmModel || "deepseek-chat");
+  } catch (e) { console.warn("loadSettings", e); }
+}
+function setIfExists(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+function saveSettings() {
+  const s = {
+    llmKey: document.getElementById("llm-key").value.trim(),
+    llmBaseUrl: document.getElementById("llm-base-url").value.trim().replace(/\/+$/,""),
+    llmModel: document.getElementById("llm-model").value.trim(),
+  };
+  const errs = [];
+  if (!s.llmKey) errs.push("LLM API Key 不能为空");
+  if (!s.llmBaseUrl) errs.push("LLM Base URL 不能为空");
+  const err = document.getElementById("settings-error");
+  if (errs.length) { err.textContent = errs.join("; "); err.classList.add("active"); return; }
+  err.classList.remove("active");
+  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  state.settings = s;
+  const btn = document.getElementById("btn-save-keys");
+  const orig = btn.textContent; btn.textContent = "✓ 已保存"; setTimeout(() => btn.textContent = orig, 1200);
+}
+function clearSettings() {
+  if (!confirm("确认清空所有 API 设置?")) return;
+  localStorage.removeItem(LS_KEY);
+  document.getElementById("llm-key").value = "";
+  state.settings = null;
+}
+
+function log(msg, kind) {
+  const el = document.getElementById("status-log");
+  const ts = new Date().toLocaleTimeString();
+  const cls = kind ? ' class="log-' + kind + '"' : "";
+  el.innerHTML += "<span" + cls + ">[" + ts + "] " + escapeHtml(msg) + "</span>\n";
+  el.scrollTop = el.scrollHeight;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+function collectFormValues() {
+  return {
+    original_text: document.getElementById("input-original_text").value,
+    audience:      document.getElementById("input-audience").value,
+    tone:          document.getElementById("input-tone").value,
+    language:      document.getElementById("input-language").value,
+  };
+}
+
+/* mustache-lite (input refs only here) */
+function mustacheLite(template, ctx) {
+  if (!template) return "";
+  return template.replace(/{{([\w.]+)}}/g, (m, key) => {
+    const v = key.split(".").reduce((o, k) => (o == null ? o : o[k]), ctx);
+    return v == null ? "" : String(v);
+  });
+}
+
+function extractJson(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) {}
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) { try { return JSON.parse(fence[1]); } catch (e) {} }
+  const start = text.indexOf("{"), end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)); } catch (e) {} }
+  return null;
+}
+
+async function callLLM(messages, opts) {
+  const s = state.settings;
+  const url = s.llmBaseUrl + "/chat/completions";
+  const body = { model: s.llmModel, messages, temperature: (opts && opts.temperature) || 0.4 };
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + s.llmKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      const msg = (resp.status >= 400 && resp.status < 500) ? ERROR_UX.llm_4xx : ERROR_UX.llm_5xx;
+      throw new Error(`LLM ${resp.status}: ${msg} | ${t.slice(0, 200)}`);
+    }
+    const j = await resp.json();
+    return j.choices?.[0]?.message?.content || "";
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(ERROR_UX.llm_timeout);
+    throw e;
+  } finally { clearTimeout(tid); }
+}
+
+function markStep(id, kind) {
+  const el = document.getElementById(id); if (!el) return;
+  el.classList.remove("running","done","fail"); el.classList.add(kind);
+}
+
+async function startGenerate() {
+  if (!state.settings || !state.settings.llmKey) {
+    alert(ERROR_UX.missing_llm_key);
+    document.getElementById("settings-panel").style.display = "block";
+    return;
+  }
+  const inp = collectFormValues();
+  if (!inp.original_text || inp.original_text.trim().length < 5) {
+    alert("请输入原文 / 草稿"); return;
+  }
+
+  document.getElementById("btn-generate").disabled = true;
+  document.getElementById("progress-section").classList.add("active");
+  document.getElementById("results-section").classList.remove("active");
+  document.getElementById("status-log").textContent = "";
+  document.getElementById("article").innerHTML = "";
+  ["ps-polish","ps-render"].forEach(id => document.getElementById(id).classList.remove("running","done","fail"));
+
+  try {
+    markStep("ps-polish", "running");
+    log("LLM polish ...");
+    const ctx = { input: inp };
+    const sys = mustacheLite(SYSTEM_PROMPT_TEMPLATE, ctx);
+    const usr = mustacheLite(USER_PROMPT_TEMPLATE, ctx);
+    const raw = await callLLM([
+      { role: "system", content: sys },
+      { role: "user",   content: usr },
+    ], { temperature: 0.4 });
+    const out = extractJson(raw);
+    if (!out) throw new Error(ERROR_UX.json_parse + "\n原始片段: " + raw.slice(0, 200));
+    state.steps.polish = { raw, output: out };
+    markStep("ps-polish", "done");
+    log("polish 完成", "success");
+
+    markStep("ps-render", "running");
+    document.getElementById("results-section").classList.add("active");
+    renderArticle(out);
+    markStep("ps-render", "done");
+    log("渲染完成", "success");
+  } catch (err) {
+    log("致命错误: " + err.message, "error");
+    console.error(err);
+    if (state.steps.polish) markStep("ps-polish", state.steps.polish.output ? "done" : "fail");
+    else markStep("ps-polish", "fail");
+  } finally {
+    document.getElementById("btn-generate").disabled = false;
+  }
+}
+
+/* === markdown subset render ===
+   仅支持: 段落 / 标题 / 列表 / 引用 / 代码块 / 行内 *斜* **粗** `code` [link]
+   生成的 HTML 走 sanitizeHtml 白名单净化(strict 等价)
+*/
+function renderMarkdown(md) {
+  if (!md) return "";
+  // normalize line endings
+  md = md.replace(/\r\n?/g, "\n");
+  const lines = md.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    let line = lines[i];
+    // fenced code
+    const fence = line.match(/^```(\w+)?\s*$/);
+    if (fence) {
+      const lang = fence[1] || "";
+      i++;
+      const buf = [];
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++;  // consume closing fence
+      const langCls = lang ? ' class="language-' + escapeHtml(lang) + '"' : "";
+      out.push("<pre><code" + langCls + ">" + escapeHtml(buf.join("\n")) + "</code></pre>");
+      continue;
+    }
+    // heading
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { out.push("<h" + h[1].length + ">" + renderInline(h[2]) + "</h" + h[1].length + ">"); i++; continue; }
+    // blockquote
+    if (/^>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^>\s?/, "")); i++; }
+      out.push("<blockquote>" + renderInline(buf.join(" ")) + "</blockquote>");
+      continue;
+    }
+    // unordered list
+    if (/^\s*[-*]\s+/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*[-*]\s+/, "")); i++; }
+      out.push("<ul>" + buf.map(b => "<li>" + renderInline(b) + "</li>").join("") + "</ul>");
+      continue;
+    }
+    // ordered list
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
+      out.push("<ol>" + buf.map(b => "<li>" + renderInline(b) + "</li>").join("") + "</ol>");
+      continue;
+    }
+    // empty -> paragraph break
+    if (/^\s*$/.test(line)) { i++; continue; }
+    // paragraph (collect consecutive non-blank lines)
+    const pbuf = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,6})\s+/.test(lines[i]) && !/^>\s?/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+\.\s+/.test(lines[i]) && !/^```/.test(lines[i])) {
+      pbuf.push(lines[i]); i++;
+    }
+    out.push("<p>" + renderInline(pbuf.join(" ")) + "</p>");
+  }
+  return sanitizeHtml(out.join("\n"));
+}
+
+function renderInline(s) {
+  if (!s) return "";
+  let h = escapeHtml(s);
+  // code first (so * inside ` are not interpreted)
+  h = h.replace(/`([^`\n]+)`/g, (m, c) => "<code>" + c + "</code>");
+  // links
+  h = h.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => '<a href="' + escapeAttr(u) + '" target="_blank" rel="noopener">' + t + '</a>');
+  // bold then italic
+  h = h.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
+  return h;
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/javascript:/i, ""); }
+
+/* === DOM sanitizer (strict whitelist; equivalent intent of dompurify-strict) === */
+const ALLOWED_TAGS = new Set([
+  "p","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote",
+  "pre","code","strong","em","a","br","hr","span"
+]);
+const ALLOWED_ATTRS = {
+  "a": new Set(["href","target","rel"]),
+  "code": new Set(["class"]),
+  "*": new Set([]),
+};
+function sanitizeHtml(htmlStr) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = htmlStr;
+  walkAndPrune(tpl.content);
+  return tpl.innerHTML;
+}
+function walkAndPrune(node) {
+  const kids = Array.from(node.childNodes);
+  for (const c of kids) {
+    if (c.nodeType === 1) {  // element
+      const tag = c.tagName.toLowerCase();
+      if (!ALLOWED_TAGS.has(tag)) {
+        // unwrap (replace with its children)
+        const parent = c.parentNode;
+        while (c.firstChild) parent.insertBefore(c.firstChild, c);
+        parent.removeChild(c);
+        continue;
+      }
+      const allowedForTag = ALLOWED_ATTRS[tag] || ALLOWED_ATTRS["*"];
+      for (const attr of Array.from(c.attributes)) {
+        if (!allowedForTag.has(attr.name)) c.removeAttribute(attr.name);
+        else if (attr.name === "href") {
+          const v = (attr.value || "").trim();
+          if (/^(javascript|data|vbscript):/i.test(v)) c.removeAttribute("href");
+        }
+      }
+      walkAndPrune(c);
+    } else if (c.nodeType === 8) {  // comment
+      c.parentNode.removeChild(c);
+    }
+  }
+}
+
+function renderArticle(out) {
+  // Compose source markdown for copy / download
+  const mdParts = ["# " + (out.title || "Untitled"), ""];
+  if (out.abstract) { mdParts.push("> " + out.abstract); mdParts.push(""); }
+  for (const sec of (out.sections || [])) {
+    const lvl = (sec.level === 3) ? "###" : "##";
+    mdParts.push(lvl + " " + (sec.heading || ""));
+    mdParts.push("");
+    mdParts.push(sec.body_md || "");
+    mdParts.push("");
+  }
+  state.lastMarkdown = mdParts.join("\n");
+
+  // Build article HTML (each piece sanitized)
+  const art = document.getElementById("article");
+  art.innerHTML = "";
+  const titleEl = document.createElement("h1");
+  titleEl.textContent = out.title || "Untitled";
+  art.appendChild(titleEl);
+
+  if (out.abstract) {
+    const abs = document.createElement("div"); abs.className = "article-abstract";
+    abs.textContent = out.abstract;
+    art.appendChild(abs);
+  }
+
+  for (const sec of (out.sections || [])) {
+    const lvl = (sec.level === 3) ? 3 : 2;
+    const h = document.createElement("h" + lvl);
+    h.textContent = sec.heading || "";
+    art.appendChild(h);
+    const wrap = document.createElement("div");
+    wrap.innerHTML = renderMarkdown(sec.body_md || "");
+    art.appendChild(wrap);
+  }
+}
+
+</script>
+</body>
+</html>

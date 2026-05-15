@@ -1,6 +1,6 @@
 ---
 name: skill2web
-description: Compile a flow-shaped Claude skill (input → 1-3 LLM calls → render → output) into a single-file HTML web tool that non-agent users can open and use directly. Use when the user asks to "make this skill into a web page", "compile a skill to HTML", "package a skill so my friend without Claude Code can use it", "turn this PPT/poster/recipe skill into a website", "build a no-agent runtime for a skill", or shares a GitHub URL of a Claude skill and asks for a shareable web link. Output is a self-contained `.html` file users can drop on GitHub Pages / Surge / WeChat. Build-time uses agent + LLM; run-time is pure browser, no agent.
+description: Compile a flow-shaped Claude skill (input → 1-3 linear LLM calls → render → output) into a single-file HTML web tool that non-agent users can open and use directly. v0.2 supports three ir_kinds — image-deck (per-page images), template-html (markdown / report), png-canvas (single poster). Use when the user asks to "make this skill into a web page", "compile a skill to HTML", "package a skill so my friend without Claude Code can use it", "turn this PPT/poster/recipe/document skill into a website", "build a no-agent runtime for a skill", or shares a GitHub URL of a Claude skill and asks for a shareable web link. Output is a self-contained `.html` file users can drop on GitHub Pages / Surge / WeChat. Build-time uses agent + LLM; run-time is pure browser, no agent.
 ---
 
 # skill2web
@@ -62,33 +62,41 @@ Read `references/analyzer-checklist.md`.
 
 Outputs one of:
 
-- **compilable**: proceed to phase 3
+- **compilable** (无降级): proceed to phase 3
+- **compilable WITH 降级** (v0.2.1, 见 checklist §4.5 / §4.6): 列出每一条降级 (原 skill 的 X 步 → IR 替换为 Y), 在 USER GATE 1 让用户**明确接受**才进 phase 3
 - **refuse**: write a refusal message using a template from the checklist. **Stop.** Do not try to "make it work anyway."
 
 **USER GATE 1**: After your judgment but before extraction, surface the analyzer verdict in plain language:
 
-> 我判定这个 skill 是 **可编译的（流程化、image-per-slide 类型）**。理由：…。接下来我会抽 IR。继续吗？
+> 我判定这个 skill 是 **可编译的（`<ir_kind>`，<是否降级>）**。理由：…。
+>
+> 若走了降级路径 (§4.6),逐条列:
+> - 原 skill step / phase: <X>
+> - IR 替换: <Y> (例: 改为 user 上传 README + 截屏列表)
+> - 这块**损失**: <Z> (例: 失去了从代码自动推断 benefit 的能力)
+>
+> 接下来我会抽 IR。继续吗?(y / 改判定 / **不接受这个降级**)
 
-The user may override your verdict. If they say "refuse anyway" or "but try this anyway", trust them.
+The user may override your verdict. If they say "refuse anyway" or "but try this anyway" or "不接受降级", trust them — 用户说不接受降级 = 等价 refuse。
 
 ### Phase 3 — extractor
 
-Read `references/ir-schema.md`. Your job is to fill the IR JSON. The IR has eight top-level fields; the hardest is `static_assets` (raw text blocks copied verbatim from `references/`) and `llm_phase.system_prompt_template` (built by you, with the user's confirmation).
+Read `references/ir-core.md` 与 `references/ir-kinds/<ir_kind>.md`. Your job is to fill the v0.2 IR JSON. IR 顶层 8 字段(universal: skill_meta / input_schema / llm_pipeline / browser_runtime / error_ux / attribution / render + meta: ir_version / ir_kind),最难的是 `render.static_assets` (raw text 来自 source `references/`) 与 `llm_pipeline[*].system_prompt_template` (由你起草, 用户确认)。
 
 Extraction sources:
 
 | IR field | Where to look in source skill |
 |---|---|
 | `skill_meta` | `SKILL.md` frontmatter + `LICENSE` + `NOTICE.md` + `README.md` |
-| `static_assets.style_lock` / `role_locks` / `reference_clauses` | Code-fenced blocks (` ```text `) in `references/prompt-patterns.md` or equivalent |
-| `static_assets.archetypes` | Lists in `references/*archetypes*.md` |
-| `static_assets.theme_tokens` | `assets/theme-tokens.json` if present, else inferred from text |
 | `input_schema` | Inferred. Not declared in SKILL.md → **ask the user what fields make sense** |
-| `llm_phase.system_prompt_template` | You draft, citing the source skill's "Workflow" section verbatim where possible |
-| `llm_phase.expected_output_schema` | You draft based on what the render phase needs |
-| `render_phase.kind` | One of: `image-per-slide` / `template-html` / `pptx-canvas` / `png-canvas`. Decide from `SKILL.md` "Operating Rule". |
-| `render_phase.per_item.prompt_template` | Composes static_assets + iterator item fields. For image-per-slide skills, mirror the source skill's "Complete Page Image Prompt" template. |
-| `browser_runtime` | Defaults from `references/lib-mapper.md`; user picks providers |
+| `llm_pipeline[*].system_prompt_template` | You draft, citing the source skill's "Workflow" section verbatim where possible. Default to **single step**(id="plan");仅当 source skill 有"两轮 LLM(intake → spine)"形态再拆 2-3 step。每个 step 的 `uses` 只能引前序 step。 |
+| `llm_pipeline[*].expected_output_schema` | You draft based on what the render phase needs |
+| `browser_runtime.llm_adapter` / `image_adapter` | Defaults from `references/adapters.md`; user picks providers at USER GATE 3a |
+| `browser_runtime.image_adapter` | **null** if `ir_kind=template-html`; `openai-images-compat` for image-deck / png-canvas |
+| `render` (kind-specific shape) | 见 `references/ir-kinds/<ir_kind>.md`: |
+| ↳ `image-deck` | `render.static_assets.{style_lock, role_locks, reference_clauses, archetypes, theme_tokens}` + `render.iterator` + `render.per_item.{prompt_template, size_by_role, api, endpoint_mode}` |
+| ↳ `template-html` | `render.{output_form, template_html?, css_lock?, data_binding, sanitizer, features}` |
+| ↳ `png-canvas` | `render.{canvas_size, static_assets.{style_lock, reference_clauses}, prompt_template, data_binding?, api, endpoint_mode, compositing="none", fonts}` |
 | `error_ux` | You draft, user edits |
 | `attribution` | Direct from `LICENSE` + `NOTICE.md` |
 
@@ -100,12 +108,12 @@ Iterate until the user says "可以" (or equivalent). Save the confirmed IR to `
 
 ### Phase 4 — mapper
 
-Read `references/lib-mapper.md`.
+Read `references/adapters.md` (API 调用契约) 与 `references/render-libs.md` (inline JS lib)。
 
-For every `lib_deps` entry in the source skill (look at imports in any bundled scripts, plus any `pip install` hints in SKILL.md / README.md), find a row in the mapper. If a library is **not in the mapper**, you have three choices:
+For every `lib_deps` entry in the source skill (look at imports in any bundled scripts, plus any `pip install` hints in SKILL.md / README.md), find a row in either file. If a library is **not in either file**, you have three choices:
 
 1. Refuse compile (back to phase 2 with refusal reason).
-2. Add a new row to `lib-mapper.md` — but only if you can confidently confirm coverage. **USER GATE 3**: ask the user before adding new rows; lib-mapper.md is project canon.
+2. Add a new row — but只有当你能自信确认 coverage。**USER GATE 3b**: 加 row 前问用户; 这两个文件都是 project canon。
 3. Ask the user if they'll provide a fallback (e.g. "this skill calls `python-magic`; we have no browser equivalent. Want to use a dumb MIME guess instead?").
 
 Also pick **providers** at this gate. **All v0.1 defaults are `unverified` for browser CORS** (see `references/lib-mapper.md`). State this risk explicitly:
@@ -121,13 +129,24 @@ Word the gate to the user as:
 
 Lock the user's answer into IR.browser_runtime.default_endpoints. If the user **does verify** a provider end-to-end during this compile, ask them to add an entry to the Verification log in `references/lib-mapper.md` before phase 6.
 
-### Phase 5 — composer
+### Phase 5 — composer (v0.2 三步组装)
 
-Read `templates/base.html` (the canonical HTML skeleton, distilled from the `ian-handdrawn-ppt` hero case). It contains `{{MUSTACHE}}`-style placeholders that map 1:1 to IR fields.
+v0.2 把单模板 `base.html` 拆成 `templates/skeleton.html` (通用骨架) + `templates/blocks/<kind>.html` (per-kind UI/render) + `templates/adapters/<name>.js` (API wrapper)。Composer 三步组装:
 
-In v0.1, the composer **does not call frontend-design**. It just fills the template. UI quality is whatever the template gives — that is intentional per DESIGN.md (Unix composition is a v0.2 concern).
+1. **取骨架**: 读 `templates/skeleton.html`
+2. **注入 block**: 按 `IR.ir_kind` 选 `blocks/<kind>.html`,替换 skeleton 的 BLOCK 标记
+3. **注入 adapter**: 按 `IR.browser_runtime.{llm,image}_adapter` inline `adapters/*.js`
+4. **placeholder 替换**: 所有 `{{IR.X.Y|filter}}` 用 IR 值替换
 
-Substitute every `{{…}}` placeholder. Failure to substitute one is a bug; emit a warning and ask the user.
+实际跑:
+
+```bash
+python3 skill/compose.py <ir.json> dist/<skill-name>.html
+```
+
+详见 `references/compiler-workflow.md` Phase 5。v0.2 composer 仍**不**调 frontend-design;UI 质量由 skeleton + block 决定(同 v0.1 哲学,frontend-design 集成推迟到 v0.3)。
+
+未解析的 placeholder 会在 stderr 报警 — agent 必须把警告 surface 给用户。
 
 ### Phase 6 — emitter
 
@@ -152,7 +171,9 @@ Use these unless the user says otherwise:
 
 - **Output directory**: `<project-root>/dist/`
 - **Scratch directory** (cloned source skills): `/tmp/skill2web-refs/`
-- **HTML template**: `skill/templates/base.html`
+- **HTML skeleton**: `skill/templates/skeleton.html`(三步组装的骨架)
+- **HTML blocks**: `skill/templates/blocks/<ir_kind>.html`(per-kind UI/render)
+- **HTML adapters**: `skill/templates/adapters/<adapter>.js`(API 调用 wrapper)
 - **LLM provider**: `https://api.deepseek.com/v1` model `deepseek-chat`
 - **Image provider**: `https://image.token-recyclebin.com/v1` model `gpt-image-2` (only when render_phase.kind needs images)
 - **Concurrency** for batched API calls in output: `3`
@@ -171,16 +192,26 @@ Use these unless the user says otherwise:
 
 ## Status
 
-**v0.1 honest scope** (post-codex-review 2026-05-15):
+**v0.2 honest scope** (2026-05-15, ship per DESIGN-v0.2.md):
 
-- ✅ Supports `ir_kind = "image-deck"` (validated via the `ian-handdrawn-ppt` hero case). The IR shape and the `base.html` template are both image-deck-shaped.
-- ❌ Does **not** yet support `template-html` (markdown / report skills), `pptx-canvas` (editable PPTX), `png-canvas` (single-image skills), or any agent-runtime kind. These are **speculation** until a second hand-compile of a non-image-deck skill validates that the IR generalizes. See `../TODO.md`.
-- ❌ Does **not** integrate `frontend-design` skill. UI is whatever `templates/base.html` provides. This is intentional per DESIGN.md; the v0.2 plan stays open but unscheduled.
-- ⚠️ The default provider endpoints (DeepSeek / StepFun / `image.token-recyclebin.com`) are listed in `lib-mapper.md` as `unverified` for browser CORS. The compile run **must** surface this risk to the user at gate 3. See `../TODO.md` for the verification work.
+- ✅ Supports three `ir_kind` values:
+  - `image-deck` — per-page image deck (例: ian-handdrawn-ppt; 通过回归编译验证)
+  - `template-html` — markdown / report 输出 (例: synthetic-essay-polisher hero case 2 → composer 自动版本)
+  - `png-canvas` — 单图封面 (例: guizang-cover 合成 IR)
+- ✅ `llm_pipeline` 数组化 (1-3 step, 严格线性, `uses` 只能引前序)
+- ✅ Skeleton + block + adapter 三步组装 composer (`skill/compose.py`)
+- ✅ v0.1 → v0.2 IR migration (`skill/migrate_v01_to_v02.py`)
+- ✅ Analyzer kind router + step 9 运行环境等价性检查; 5 类新 refusal 模板 (needs-headless-browser / needs-fs / needs-third-party-fetch / layout-too-complex / private-api 等)
+- 🔬 Spike-gated (per DESIGN §11):
+  - `pptx-canvas` — 仅 schema 草案; D-spike 通过才进 v0.2 实装,否则推 v0.3 / 转 refusal
+  - `data-table` — 仅 schema 草案; E-minimal spike 同上
+- ❌ Does **not** integrate `frontend-design` skill (推迟到 v0.3, 同 v0.1 哲学)
+- ❌ Does **not** support DAG `llm_pipeline` (分叉 / 合流 = agent-shaped, analyzer 拒)
+- ⚠️ Provider endpoint browser CORS 仍 `unverified` (见 `references/adapters.md` Verification log)。USER GATE 3a 必须 surface 该风险。
 
-The output `.html` is **single-file source** (no external CDN at runtime), but it needs to be served over `http://` — most modern browsers restrict `fetch()` from `file://` origins. Tell users to use `python3 -m http.server`, GitHub Pages, Surge, or Cloudflare Pages.
+输出 `.html` 是 **single-file source** (无 run-time CDN), 但需要 HTTP 服务 (浏览器对 `file://` 的 `fetch()` 限制)。用 `python3 -m http.server` / GitHub Pages / Surge / Cloudflare Pages。
 
-See `../DESIGN.md` for the broader plan and `../hero-cases/ian-handdrawn-ppt/LESSONS.md` for what's known to work.
+详见 `../DESIGN.md` (v0.1) + `../DESIGN-v0.2.md` (v0.2 演化) + `../hero-cases/*/LESSONS.md`。
 
 ## Final response (when finishing a compile)
 
