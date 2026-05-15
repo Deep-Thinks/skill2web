@@ -1,0 +1,159 @@
+{
+  "_comment": "IR for nidhinjs/prompt-master (7.4k stars). template-html shape; single-step LLM; zero degradation. v0.2.1 hero case validating that 'pure SOP-shape skills' compile direct without §4.6 degradation. Source license assumed MIT (verify in Phase 6).",
+  "ir_version": "0.2",
+  "ir_kind": "template-html",
+  "skill_meta": {
+    "name": "prompt-master",
+    "display_name": "Prompt Master · 给任意 AI 工具写最优 prompt",
+    "description": "把粗糙的想法编译为针对特定 AI 工具（Claude / GPT / o3 / Gemini / Qwen / Midjourney 等）优化过的可粘贴 prompt。单步 LLM，纯 SOP-shape skill 的直编基线。",
+    "source": {
+      "type": "github",
+      "url": "https://github.com/nidhinjs/prompt-master",
+      "rev": "main",
+      "path_inside_repo": "."
+    },
+    "license": "MIT",
+    "author": "nidhinjs",
+    "author_links": ["https://github.com/nidhinjs"]
+  },
+  "input_schema": [
+    {
+      "key": "rough_idea",
+      "type": "textarea",
+      "label": "你想让 AI 干什么（一两句话即可）",
+      "required": true,
+      "placeholder": "例：帮我把这段会议笔记总结成给老板看的 3 段 bullet"
+    },
+    {
+      "key": "target_tool",
+      "type": "select",
+      "label": "目标 AI 工具",
+      "required": true,
+      "options": [
+        {"value": "claude-4x",        "label": "Claude 4.x（Opus 4.7 / Sonnet 4.6 / Haiku 4.5）"},
+        {"value": "chatgpt-gpt5",     "label": "ChatGPT / GPT-5.x"},
+        {"value": "openai-reasoning", "label": "o3 / o4-mini（OpenAI 推理模型）"},
+        {"value": "gemini-2x-3pro",   "label": "Gemini 2.x / 3 Pro"},
+        {"value": "qwen3-thinking",   "label": "Qwen3（thinking 模式）"},
+        {"value": "qwen25-instruct",  "label": "Qwen2.5 instruct"},
+        {"value": "deepseek-r1",      "label": "DeepSeek-R1"},
+        {"value": "midjourney",       "label": "Midjourney（图像）"},
+        {"value": "image-ai-generic", "label": "通用图像 AI（nano-banana / SD / Flux）"},
+        {"value": "cursor-coding",    "label": "Cursor / 编码 agent"}
+      ],
+      "default": "claude-4x"
+    },
+    {
+      "key": "audience",
+      "type": "text",
+      "label": "输出给谁看（可选）",
+      "required": false,
+      "placeholder": "例：技术 manager / 普通读者 / 客户"
+    },
+    {
+      "key": "extra_constraints",
+      "type": "textarea",
+      "label": "额外约束（可选）",
+      "required": false,
+      "placeholder": "比如：必须 < 200 字 / JSON 格式 / 禁止某些用词 / 必须含 [PLACEHOLDER] 占位符"
+    },
+    {
+      "key": "output_lang",
+      "type": "select",
+      "label": "输出语言",
+      "required": true,
+      "options": [
+        {"value": "zh", "label": "中文"},
+        {"value": "en", "label": "English"}
+      ],
+      "default": "zh"
+    }
+  ],
+  "llm_pipeline": [
+    {
+      "id": "craft",
+      "uses": [],
+      "model_hint": "deepseek-chat | step-3.5-flash | claude-haiku-4-5",
+      "temperature": 0.3,
+      "json_mode": "prompt-only",
+      "system_prompt_template": "你是一位 prompt engineer。用户给你一个粗糙想法和目标 AI 工具,你要为这个**特定工具**写出一段可直接粘贴的、零 token 浪费的高质量 prompt。\n\n【目标工具】{{input.target_tool}}\n【目标受众】{{input.audience}}\n【额外约束】{{input.extra_constraints}}\n【输出语言】{{input.output_lang}}\n\n## 各工具的关键调参原则(按 target_tool 选其一应用)\n\n- claude-4x: 显式具体, XML tags (`<context>`/`<task>`/`<constraints>`/`<output_format>`) 帮助多 section, 解释 why 不只 what, 限定 \"只做明确请求的事,不要超范围\"。Opus 4.7 不要硬塞 \"think step by step\"。\n- chatgpt-gpt5: 最小化 prompt + 显式 output contract(格式/长度/什么叫 done), 压缩 verbosity 用 \"< X 字, 无 preamble, 无 caveats\"。\n- openai-reasoning (o3/o4): 短而干净, 绝不加 CoT/think-step-by-step/scaffolding(会降质), zero-shot 优先, 200 词以内系统 prompt。\n- gemini-2x-3pro: 长上下文友好, 但易幻觉引用 → 加 \"只 cite 你确定的源,不确定就说 [uncertain]\"; format drift 严重 → 显式 format lock + labeled example。\n- qwen3-thinking: 同 o3 处理。\n- qwen25-instruct: 显式 role + JSON schema, 短而聚焦。\n- deepseek-r1: 同 o3 处理。\n- midjourney / image-ai-generic: 主体 → 风格 → 镜头 → 光线 → 后处理, 逗号分隔, 不写 \"please / make sure\", 加权重/aspect 参数。\n- cursor-coding: 明确 acceptance criteria, 列要改的文件, 禁止超范围 refactor。\n\n## 你的输出 — **严格 JSON, 顶层只能是下面这个 shape**\n\n{\n  \"title\":    \"<10-20 字的总标题, 形如: '会议纪要 → 老板看的 3 段 bullet (Claude 4.x 版)'>\",\n  \"abstract\": \"<一句话(<= 30 字): 我做了什么优化、为什么对这个工具好>\",\n  \"sections\": [\n    {\n      \"heading\": \"可直接粘贴的 Prompt\",\n      \"body_md\": \"```\\n<prompt 全文 — 这是用户要 copy 的东西。一字不多一字不少。无 'please' / 'make sure' 之类客套, 直接祈使。extra_constraints 必须体现进来。>\\n```\"\n    },\n    {\n      \"heading\": \"目标工具与说明\",\n      \"body_md\": \"- **目标工具**: <target_tool 原值>\\n- **关键优化**: <对该工具特别做的事, 一句话>\\n- **使用前 setup**: <如有: 比如开启 thinking mode / 上传文件 / 配 temperature; 没有写 '无'>\\n- **占位符**: <如 prompt 里有 [TONE]/[AUDIENCE]/[BRAND] 这类占位符, 列出; 没有写 '无'>\"\n    }\n  ]\n}\n\n规则:\n1. ONLY JSON。若模型限制必须包, 可用 ```json ... ``` 包裹。\n2. sections **恰好 2 个**, 顺序固定。\n3. 第 1 个 section 的 body_md **必须**用 ``` 代码块包住 prompt 全文, 方便用户一键复制。\n4. 第 2 个 section 用 `-` 列表, 顺序固定: 目标工具 → 关键优化 → 使用前 setup → 占位符。\n5. 不要解释 prompt engineering 理论。",
+      "user_prompt_template": "粗糙想法:\n{{input.rough_idea}}\n\n按上述系统说明,为目标工具生成最优 prompt。",
+      "expected_output_schema": {
+        "type": "object",
+        "required": ["title", "sections"],
+        "properties": {
+          "title":    { "type": "string" },
+          "abstract": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["heading", "body_md"],
+              "properties": {
+                "heading": { "type": "string" },
+                "body_md": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "browser_runtime": {
+    "llm_adapter": "openai-chat-compat",
+    "image_adapter": null,
+    "default_endpoints": {
+      "llm": {
+        "base_url": "https://api.stepfun.com/v1",
+        "model": "step-3.5-flash"
+      }
+    },
+    "concurrency": 1,
+    "timeout_ms": {
+      "llm": 120000,
+      "image": 0
+    },
+    "retry": {
+      "llm": 0,
+      "image": 0
+    },
+    "extra_libs": []
+  },
+  "render": {
+    "output_form": "markdown",
+    "template_html": "",
+    "css_lock": "",
+    "data_binding": "$.steps.craft.output",
+    "sanitizer": "dompurify-strict",
+    "features": {
+      "toc": false,
+      "footnotes": false,
+      "syntax_highlight": true,
+      "print_css": false,
+      "export_pdf": false
+    }
+  },
+  "error_ux": {
+    "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+    "missing_image_key": "(本 skill 不需要图像 API)",
+    "llm_4xx": "LLM 调用被拒绝。常见原因: key 失效 / 余额不足 / 不支持该模型。",
+    "llm_5xx": "LLM 服务暂时不可用,过几秒再试。",
+    "llm_timeout": "LLM 响应超时(>120s)。stepfun reasoning 模型生成慢,可能需要再等等。",
+    "image_4xx": "(N/A)",
+    "image_5xx": "(N/A)",
+    "image_timeout": "(N/A)",
+    "cors": "浏览器拒绝了跨域请求。stepfun / mimo / OpenAI 已实测 CORS 友好;若用 deepseek 撞 CORS 请换 base URL。",
+    "json_parse": "LLM 没返回有效 JSON。点 [看 prompt] 查看,或换更强的模型重试。",
+    "kind_unsupported": "此编译产物不支持当前操作。"
+  },
+  "attribution": {
+    "source_skill_link": "https://github.com/nidhinjs/prompt-master",
+    "source_author": "nidhinjs",
+    "source_author_link": "https://github.com/nidhinjs",
+    "source_license": "MIT (assumed; verify in Phase 6)",
+    "source_license_text_file": "LICENSE",
+    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2.1 编译。源 skill: <a href='https://github.com/nidhinjs/prompt-master'>nidhinjs/prompt-master</a> · MIT。"
+  }
+}
