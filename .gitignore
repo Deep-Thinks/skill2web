@@ -17,8 +17,8 @@ venv/
 .idea/
 .DS_Store
 
-# 构建产物
-dist/
+# 构建产物 (单文件 HTML 编译产物不入仓; 说明文档 README / REFUSAL 例外)
+dist/*
 !dist/*.README.md
 !dist/*.REFUSAL.md
 build/
