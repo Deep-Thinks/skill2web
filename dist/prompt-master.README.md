@@ -44,4 +44,4 @@ python3 -m http.server 8765
 
 - 源 skill: nidhinjs/prompt-master · MIT (假定; 请以 [原 repo](https://github.com/nidhinjs/prompt-master) 的 LICENSE 为准)
 - 编译产物: 继承上游 MIT
-- 编译器: [skill2web](https://github.com/xuejia-mq/skill2web) · MIT
+- 编译器: [skill2web](https://github.com/Deep-Thinks/skill2web) · MIT

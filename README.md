@@ -1,102 +1,117 @@
 # skill2web
 
-把任意 Claude skill 编译成单文件 HTML 工具网站。
+**English** · [中文](README.zh-CN.md)
 
-**核心哲学**：build-time 是 agent，run-time **不是** agent。让普通用户拿到的是一个无 agent runtime 的轻量网页。
+> Compile any Claude skill into a single-file HTML web tool.
 
-## 这是什么
+**Core philosophy:** build-time is an agent; run-time is **not**. End users get a lightweight web page with no agent runtime — just open it in a browser.
 
-AI 从业者写了大量高质量 Claude Code skill（PPT、海报、菜谱、文档生成），但**只有装了 Claude Code 的开发者才能用**。普通人——不懂"什么是 agent"的朋友、亲戚、协会成员——无法体验。`skill2web` 把流程化 skill（输入 → N 次 LLM 调用 → 模板渲染 → 输出）编译为一个单文件 HTML，让任何人点开即用。
+## What it is
 
-适用范围：流程化 skill（输入 → 1-3 次 LLM 调用 → 模板渲染 → 输出）。多轮 agent 分支 / 不可拆 skill 由 compiler 主动拒绝。
+AI practitioners have written a wealth of high-quality Claude Code skills (PPT generators, posters, recipe writers, doc polishers), but **only developers with Claude Code installed can run them**. The non-technical audience — your friends, family, or community members who don't know "what an agent is" — can't experience them. `skill2web` compiles flow-shaped skills (input → N LLM calls → template render → output) into a single-file HTML so anyone can use them by clicking a link.
 
-## 当前状态 (v0.2, 2026-05-15)
+**Scope:** flow-shaped skills (input → 1–3 LLM calls → template render → output). Multi-turn agent branches / non-decomposable skills are explicitly refused by the compiler.
 
-- 设计文档: `DESIGN.md` (v0.1) + `DESIGN-v0.2.md` (v0.1 → v0.2 演化)
-- v0.2 编译器: 三步组装 (skeleton + block + adapter) — `python3 skill/compose.py <ir.json> <out.html>`
-- 支持三个 `ir_kind`:
-  - `image-deck` — 多张相关图 (例 `ian-handdrawn-ppt`)
-  - `template-html` — markdown / 报告输出 (例 `synthetic-essay-polisher`)
-  - `png-canvas` — 单张封面 / 海报 (例 `guizang-cover`)
-- v0.1 IR → v0.2 自动迁移: `python3 skill/migrate_v01_to_v02.py <v0.1.json> <v0.2.json>`
-- spike-gated (DESIGN §11): `pptx-canvas` / `data-table` 仅 schema 草案,等真实 skill 触发实装
+## Hero cases (end-to-end verified)
 
-## 项目结构
+Each case below was compiled from an IR via `skill/compose.py`, run against real LLM / image-gen APIs in a browser, and screenshotted in its final delivered state.
+
+| Hero case | `ir_kind` | Upstream skill | Screenshot |
+|---|---|---|---|
+| **ian-handdrawn-ppt** | `image-deck` | [helloianneo/ian-handdrawn-ppt](https://github.com/helloianneo/ian-handdrawn-ppt) | <img src="docs/screenshots/e2e-ian-handdrawn-ppt.png" width="320" alt="hand-drawn PPT image deck"> |
+| **prompt-master** | `template-html` | [nidhinjs/prompt-master](https://github.com/nidhinjs/prompt-master) | <img src="docs/screenshots/e2e-prompt-master.png" width="320" alt="prompt master template render"> |
+| **app-onboarding-blueprint** | `template-html` (downgraded) | [adamlyttleapps/claude-skill-app-onboarding-questionnaire](https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire) | <img src="docs/screenshots/e2e-app-onboarding-blueprint.png" width="320" alt="onboarding blueprint"> |
+| **synthetic-essay-polisher** | `template-html` | synthetic (no upstream) | <img src="docs/screenshots/e2e-synthetic-essay-polisher.png" width="320" alt="long-form essay polisher"> |
+| **guizang-cover** | `png-canvas` | shape from [op7418/guizang-ppt-skill](https://github.com/op7418/guizang-ppt-skill) | <img src="docs/screenshots/e2e-guizang-cover.png" width="320" alt="cover poster single image"> |
+
+## Current status (v0.2.1, 2026-05-15)
+
+- Design docs: [`DESIGN.md`](DESIGN.md) (v0.1) + [`DESIGN-v0.2.md`](DESIGN-v0.2.md) (v0.1 → v0.2 evolution)
+- v0.2 compiler — three-step assembly (skeleton + block + adapter): `python3 skill/compose.py <ir.json> <out.html>`
+- Three supported `ir_kind` values:
+  - `image-deck` — multiple related images (e.g. `ian-handdrawn-ppt`)
+  - `template-html` — markdown / structured report (e.g. `synthetic-essay-polisher`, `prompt-master`)
+  - `png-canvas` — single cover / poster (e.g. `guizang-cover`)
+- v0.2.1 adds the **SOP-vs-tool downgrade path** — agent-shape skills can be compiled, but the compiler tells you explicitly what was dropped (see `app-onboarding-blueprint`).
+- v0.1 IR → v0.2 auto-migration: `python3 skill/migrate_v01_to_v02.py <v0.1.json> <v0.2.json>`
+- Spike-gated (DESIGN §11): `pptx-canvas` / `data-table` exist as schema drafts only; implementation waits for a real triggering skill.
+
+## Project structure
 
 ```
 skill2web/
-├── README.md
+├── README.md                          # this file (English)
+├── README.zh-CN.md                    # Chinese mirror
 ├── LICENSE                            # MIT
-├── DESIGN.md                          # v0.1 设计文档
-├── DESIGN-v0.2.md                     # v0.2 演化文档 (本 release 实施依据)
+├── DESIGN.md                          # v0.1 design doc
+├── DESIGN-v0.2.md                     # v0.2 evolution doc (this release)
+├── CHANGELOG.md
+├── CONTRIBUTING.md
 ├── TODO.md                            # v0.2.x backlog
-├── hero-cases/
-│   ├── ian-handdrawn-ppt/             # v0.1 手工 hero case (image-deck)
-│   ├── ian-handdrawn-ppt-v0.2/        # v0.2 composer 自动重编 (回归基线)
-│   └── synthetic-essay-polisher/      # v0.2 Phase B 设计输入 (template-html)
-├── dist/                              # 编译产物
-│   ├── ian-handdrawn-ppt.html
-│   ├── synthetic-essay-polisher.html
-│   ├── guizang-cover.html
-│   └── nature-skills.REFUSAL.md       # v0.1 refusal 示例 (kind-not-yet-supported)
+├── docs/screenshots/                  # hero-case screenshots used in README
+├── hero-cases/                        # hand-authored + auto-recompiled references
+├── dist/                              # compiled artifacts + per-artifact README + REFUSAL example
 └── skill/                             # v0.2 compiler
-    ├── SKILL.md                       # 主入口 (六阶段 + 四 user gate)
-    ├── compose.py                     # 三步组装 composer
-    ├── migrate_v01_to_v02.py          # v0.1 → v0.2 IR 迁移
-    ├── examples/
-    │   ├── ian-handdrawn-ppt.ir.v0.1.json   # 归档
-    │   ├── ian-handdrawn-ppt.ir.json        # v0.2
-    │   ├── synthetic-essay-polisher.ir.json # v0.2
-    │   └── guizang-cover.ir.json            # v0.2
-    ├── references/
-    │   ├── analyzer-checklist.md      # 9 step + 5 类新 refusal
-    │   ├── compiler-workflow.md       # 六阶段操作书
-    │   ├── ir-core.md                 # universal IR (8 字段)
-    │   ├── ir-kinds/
-    │   │   ├── image-deck.md
-    │   │   ├── template-html.md
-    │   │   └── png-canvas.md
-    │   ├── adapters.md                # API 调用契约
-    │   └── render-libs.md             # inline JS lib
-    └── templates/
-        ├── skeleton.html              # 通用骨架
-        ├── blocks/
-        │   ├── image-deck.html
-        │   ├── template-html.html
-        │   └── png-canvas.html
-        └── adapters/
-            ├── openai-chat-compat.js
-            ├── anthropic-chat.js
-            └── openai-images-compat.js
+    ├── SKILL.md                       # main entry (6 phases + 4 user gates)
+    ├── compose.py                     # three-step composer
+    ├── migrate_v01_to_v02.py          # v0.1 → v0.2 IR migration
+    ├── examples/                      # 5 IR examples (one per hero case)
+    ├── references/                    # IR core + ir_kinds + adapters + render-libs
+    └── templates/                     # skeleton + blocks + adapters
 ```
 
-## 运行 hero case
+## Running a hero case
 
-`hero-cases/ian-handdrawn-ppt/index.html` 是**单文件源码**（无外部 CDN 依赖），但运行时**必须通过 HTTP 协议提供**——浏览器对 `file://` 协议的 `fetch()` / `localStorage` 行为不一致，会导致请求失败或行为漂移。
+`hero-cases/ian-handdrawn-ppt/index.html` is a **single source file** (no external CDN dependency), but at runtime it **must be served over HTTP** — browsers behave inconsistently for `fetch()` / `localStorage` under `file://`, which causes requests to fail or drift.
 
-承诺的精确版本：**"单文件源码 + 任何 HTTP server" = 任何浏览器开**，包括：
+The exact promise: **"single source file + any HTTP server" = works in any browser**, including:
 
-- `python3 -m http.server`（最简单）
+- `python3 -m http.server` (simplest)
 - GitHub Pages / Surge / Cloudflare Pages / Netlify
-- 你自己的 nginx / Caddy
+- Your own nginx / Caddy
 
-不包括："双击 `.html` 文件就用"——这种用法**不稳**，不要承诺给最终用户。
+Not included: **double-clicking the `.html` file**. That path is unstable; don't promise it to end users.
 
-最简单的方法：
+Quickest local route:
 
 ```bash
 cd hero-cases/ian-handdrawn-ppt/
 python3 -m http.server 8765
-# 访问 http://localhost:8765/
+# open http://localhost:8765/
 ```
 
-首次打开会要求填两个 API key（仅存浏览器 localStorage，永不上传任何第三方）：
-- LLM 推理 key（用于内容拆解 / slide spine 生成）
-- 图像生成 key（用于生成手绘风 PNG）
+First visit asks for two API keys (stored only in browser `localStorage`, never sent to any third party):
+- An LLM inference key (for content decomposition / slide spine generation)
+- An image generation key (for the hand-drawn-style PNGs)
 
-> ⚠️ **v0.1 已知风险（post-codex-review 2026-05-15）**：默认 provider（DeepSeek、StepFun、`image.token-recyclebin.com`）的浏览器端 CORS **未实测**——它们目前仅作为 Python 后端调用验证过。第一次跑撞 CORS 错的概率非真零；若遇到，请在浏览器 DevTools Network 看 preflight 响应、或换 OpenAI 官方 / Anthropic direct-browser 端点重试。`skill/references/lib-mapper.md` 的 Verification log 是空的——欢迎你的实测结果以 PR 形式回灌。
+## Compile your own skill
+
+```bash
+# 1. Author an IR JSON (see skill/examples/*.ir.json for templates)
+# 2. Assemble into a single-file HTML
+python3 skill/compose.py path/to/your.ir.json dist/your-skill.html
+
+# 3. Preview locally
+cd dist && python3 -m http.server 8765
+```
+
+The full pipeline — analyzer-checklist 9-step decision tree, IR field semantics, adapter / render-libs selection — lives in [`skill/SKILL.md`](skill/SKILL.md) and [`skill/references/`](skill/references/).
+
+> ⚠️ **v0.1 known risk (post-codex-review 2026-05-15):** the default providers (DeepSeek, StepFun, `image.token-recyclebin.com`) have **not been verified for browser-side CORS** — they have only been exercised through Python backends so far. The first run may hit a CORS preflight error; if it does, check DevTools → Network for the preflight response or fall back to the OpenAI / Anthropic direct-browser endpoints. PRs adding browser CORS verification entries to `skill/references/render-libs.md` are very welcome.
+
+## Contributing
+
+Issues and PRs welcome. We especially want:
+
+- New hero cases (in particular, real skills that trigger a spike-gated `ir_kind`)
+- Browser-CORS verification entries for the default providers
+- Edge cases on the IR migration path (v0.1 → v0.2 → future v0.3)
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
+
+For anything outside the issue tracker — security reports, license questions, takedown requests — email the maintainer at `niuniu869@qq.com`.
 
 ## License
 
-MIT。详见 `LICENSE`。
-编译产物保留原 skill 的 license / 作者署名（详见各 hero case 目录下的 `source-attribution.md`）。
+MIT — see [`LICENSE`](LICENSE).
+Compiled artifacts preserve the upstream skill's license and attribution (each hero-case directory carries a `source-attribution.md`).

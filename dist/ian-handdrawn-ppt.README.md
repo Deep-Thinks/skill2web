@@ -1,6 +1,6 @@
 # Ian Handdrawn PPT — single-file web tool
 
-Compiled by [skill2web](https://github.com/xuejia-mq/skill2web) v0.2 from
+Compiled by [skill2web](https://github.com/Deep-Thinks/skill2web) v0.2 from
 [ian-handdrawn-ppt](https://github.com/helloianneo/ian-handdrawn-ppt) (© Ian · MIT).
 
 ## How to use

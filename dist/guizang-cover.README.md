@@ -1,6 +1,6 @@
 # Guizang 风格封面 (合成 IR) — single-file web tool
 
-由 [skill2web](https://github.com/xuejia-mq/skill2web) v0.2 编译。
+由 [skill2web](https://github.com/Deep-Thinks/skill2web) v0.2 编译。
 形态参照 [guizang-ppt-skill](https://github.com/op7418/guizang-ppt-skill) 封面分支
 (© op7418 · MIT),IR 与渲染逻辑由 skill2web 合成。
 

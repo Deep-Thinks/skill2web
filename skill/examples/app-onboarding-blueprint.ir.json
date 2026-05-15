@@ -184,6 +184,6 @@
     "source_author_link": "https://github.com/adamlyttleapps",
     "source_license": "MIT (assumed; verify in Phase 6)",
     "source_license_text_file": "LICENSE",
-    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2.1 编译。源 skill: <a href='https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire'>adamlyttleapps/claude-skill-app-onboarding-questionnaire</a> · MIT。⚠️ <strong>降级版</strong> — 砍掉了原 skill 的 codebase 探索和代码生成阶段, 只产 blueprint markdown。详见编译产物的 README。"
+    "footer_html": "本网页由 <a href='https://github.com/Deep-Thinks/skill2web'>skill2web</a> v0.2.1 编译。源 skill: <a href='https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire'>adamlyttleapps/claude-skill-app-onboarding-questionnaire</a> · MIT。⚠️ <strong>降级版</strong> — 砍掉了原 skill 的 codebase 探索和代码生成阶段, 只产 blueprint markdown。详见编译产物的 README。"
   }
 }

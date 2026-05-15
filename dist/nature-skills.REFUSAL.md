@@ -65,7 +65,7 @@
 
 ## 附：决策依据文件
 
-- skill2web SKILL.md：`/niuniu869_dev/skill2web/skill/SKILL.md`（参见 "Status" 与 "Hard rules"）
-- 分析 checklist：`/niuniu869_dev/skill2web/skill/references/analyzer-checklist.md`
-- v0.1 唯一支持的 kind 的参考实现：`/niuniu869_dev/skill2web/hero-cases/ian-handdrawn-ppt/`
-- 源 skill 本地克隆：`/tmp/skill2web-refs/nature-skills/`
+- skill2web SKILL.md：`skill/SKILL.md`（参见 "Status" 与 "Hard rules"）
+- 分析 checklist：`skill/references/analyzer-checklist.md`
+- v0.1 唯一支持的 kind 的参考实现：`hero-cases/ian-handdrawn-ppt/`
+- 源 skill 本地克隆：判定时位于本地 `/tmp/skill2web-refs/nature-skills/`（不入仓）

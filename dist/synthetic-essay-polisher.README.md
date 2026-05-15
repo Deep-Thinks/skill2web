@@ -1,6 +1,6 @@
 # 长文润色 (合成) — single-file web tool
 
-由 [skill2web](https://github.com/xuejia-mq/skill2web) v0.2 编译。
+由 [skill2web](https://github.com/Deep-Thinks/skill2web) v0.2 编译。
 合成 hero case (`synthetic-essay-polisher`) — 不绑任何上游 skill, MIT。
 
 ## 用途

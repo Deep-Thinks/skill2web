@@ -8,13 +8,13 @@
     "description": "把主题 + 比例 + 风格关键词 → 一段图像 prompt → 一张封面 PNG。形态参考 guizang-ppt 的封面分支。",
     "source": {
       "type": "local",
-      "url": "https://github.com/xuejia-mq/skill2web/tree/main/skill/examples/guizang-cover.ir.json",
+      "url": "https://github.com/Deep-Thinks/skill2web/tree/main/skill/examples/guizang-cover.ir.json",
       "rev": "main",
       "path_inside_repo": "skill/examples"
     },
     "license": "MIT",
     "author": "skill2web (synthetic)",
-    "author_links": ["https://github.com/xuejia-mq/skill2web"]
+    "author_links": ["https://github.com/Deep-Thinks/skill2web"]
   },
   "input_schema": [
     {
@@ -129,6 +129,6 @@
     "source_author_link": "https://github.com/op7418",
     "source_license": "MIT (合成 IR 由 skill2web 编写, 形态参考 guizang-ppt 封面分支)",
     "source_license_text_file": "LICENSE",
-    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2 编译。形态参照 guizang-ppt 封面分支(<a href='https://github.com/op7418/guizang-ppt-skill'>op7418</a> · MIT),IR 与渲染逻辑由 skill2web 合成。"
+    "footer_html": "本网页由 <a href='https://github.com/Deep-Thinks/skill2web'>skill2web</a> v0.2 编译。形态参照 guizang-ppt 封面分支(<a href='https://github.com/op7418/guizang-ppt-skill'>op7418</a> · MIT),IR 与渲染逻辑由 skill2web 合成。"
   }
 }

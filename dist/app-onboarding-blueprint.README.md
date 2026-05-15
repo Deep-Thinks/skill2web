@@ -59,4 +59,4 @@ python3 -m http.server 8765
 
 - 源 skill: adamlyttleapps/claude-skill-app-onboarding-questionnaire (假定 MIT — 请核对原 repo LICENSE)
 - 编译产物: 继承上游
-- 编译器: [skill2web](https://github.com/xuejia-mq/skill2web) v0.2.1 · MIT
+- 编译器: [skill2web](https://github.com/Deep-Thinks/skill2web) v0.2.1 · MIT

@@ -8,13 +8,13 @@
     "description": "把粗稿润色为有结构的 markdown 文章。合成 hero case 用于 v0.2 Phase B 设计验证。",
     "source": {
       "type": "local",
-      "url": "https://github.com/xuejia-mq/skill2web/tree/main/hero-cases/synthetic-essay-polisher",
+      "url": "https://github.com/Deep-Thinks/skill2web/tree/main/hero-cases/synthetic-essay-polisher",
       "rev": "main",
       "path_inside_repo": "hero-cases/synthetic-essay-polisher"
     },
     "license": "MIT",
     "author": "skill2web",
-    "author_links": ["https://github.com/xuejia-mq/skill2web"]
+    "author_links": ["https://github.com/Deep-Thinks/skill2web"]
   },
   "input_schema": [
     {
@@ -135,11 +135,11 @@
     "kind_unsupported": "此编译产物不支持当前操作。"
   },
   "attribution": {
-    "source_skill_link": "https://github.com/xuejia-mq/skill2web/tree/main/hero-cases/synthetic-essay-polisher",
+    "source_skill_link": "https://github.com/Deep-Thinks/skill2web/tree/main/hero-cases/synthetic-essay-polisher",
     "source_author": "skill2web",
-    "source_author_link": "https://github.com/xuejia-mq/skill2web",
+    "source_author_link": "https://github.com/Deep-Thinks/skill2web",
     "source_license": "MIT",
     "source_license_text_file": "LICENSE",
-    "footer_html": "本网页由 <a href='https://github.com/xuejia-mq/skill2web'>skill2web</a> v0.2 编译(合成 hero case · MIT)。无外部源 skill。"
+    "footer_html": "本网页由 <a href='https://github.com/Deep-Thinks/skill2web'>skill2web</a> v0.2 编译(合成 hero case · MIT)。无外部源 skill。"
   }
 }

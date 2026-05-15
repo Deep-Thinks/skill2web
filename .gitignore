@@ -17,6 +17,9 @@ venv/
 .idea/
 .DS_Store
 
+# Claude Code 本地 session 配置（不入仓）
+.claude/
+
 # 构建产物 (单文件 HTML 编译产物不入仓; 说明文档 README / REFUSAL 例外)
 dist/*
 !dist/*.README.md
