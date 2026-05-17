@@ -2,7 +2,7 @@
 
 The full step-by-step playbook for a `skill2web` compile run. Read this when you (the main agent) are actively compiling — `SKILL.md` is the high-level entry; this is the operational detail.
 
-The workflow is **conversational**. There are four mandatory user gates. Skipping a gate is a defect — most hand-compile failures were caused by *not asking*.
+The workflow is **conversational**. There are four mandatory user gates (GATE 3 splits into 3a/3b in the mapper phase). Skipping a gate is a defect — most hand-compile failures were caused by *not asking*.
 
 ## Phase 0 — Receive the request
 
@@ -37,7 +37,7 @@ If `find` returns >1 result: ask the user which one is the target. Sometimes a r
 
 Read the chosen `SKILL.md`. Note the `name`/`description` from frontmatter — they go into IR.skill_meta.
 
-Read `LICENSE`, `NOTICE.md` if present. If no LICENSE: stop and ask (per `ir-schema.md §8`). Do not invent one.
+Read `LICENSE`, `NOTICE.md` if present. If no LICENSE: stop and ask (per `ir-core.md §6`). Do not invent one.
 
 Quick scan of the directory:
 
@@ -55,7 +55,7 @@ Note any:
 
 ## Phase 2 — Analyzer
 
-Read `analyzer-checklist.md`. Run the 8-step decision tree. Stop at the first refusal trigger.
+Read `analyzer-checklist.md`. Run the 9-step decision tree (含 §4.5 / §4.6 的 SOP-vs-tool 降级检查；step 8 路由 `ir_kind`；step 9 运行环境等价性）. Stop at the first refusal trigger.
 
 If you reach the bottom: surface **USER GATE 1** with the verdict.
 
@@ -63,7 +63,23 @@ After USER GATE 1, **save your analysis** to `<output-dir>/<skill-name>.analyzer
 
 ## Phase 3 — Extractor
 
-Read `ir-schema.md`. Build the IR step by step. **Order matters** — later fields reference earlier ones.
+Read `ir-core.md`（universal 字段）与 `ir-kinds/<ir_kind>.md`（kind-specific 子 schema）. Build the v0.2 IR step by step. **Order matters** — later fields reference earlier ones.
+
+v0.2 IR 顶层是 8 个字段 + 2 个 meta：
+
+| 字段 | 来源 |
+|---|---|
+| `ir_version` | 固定 `"0.2"` |
+| `ir_kind` | analyzer §8 的路由结果（`image-deck` / `template-html` / `png-canvas`） |
+| `skill_meta` | SKILL.md frontmatter + `LICENSE` + `NOTICE.md` |
+| `input_schema` | 推断 — 不在 SKILL.md，USER GATE 2 让用户确认（v0.2 是数组 of field objects） |
+| `llm_pipeline` | 数组，1-3 个**严格线性** step（`uses` 只引前序） |
+| `browser_runtime` | mapper 阶段定 |
+| `error_ux` | 你起草，用户改语气 |
+| `attribution` | `LICENSE` + `NOTICE.md` |
+| `render` | polymorphic — shape 取决于 `ir_kind`，见 `ir-kinds/<kind>.md` |
+
+> v0.2 变化：v0.1 的 top-level `static_assets` 已下移到 `render.static_assets`（仅 `image-deck` / `png-canvas` 有）；v0.1 的 `llm_phase` 单对象升级为 `llm_pipeline` 数组；v0.1 的 `render_phase` 改名 `render`、`kind` 升到 top-level `ir_kind`。
 
 ### 3.1 `skill_meta`
 
@@ -74,11 +90,13 @@ Read `ir-schema.md`. Build the IR step by step. **Order matters** — later fiel
 - `source.path_inside_repo`: the relative path you found SKILL.md in (often `<skill-name>/`)
 - `license`, `author`, `author_links`: from LICENSE + NOTICE.md + README.md links
 
-### 3.2 `static_assets`
+### 3.2 `render.static_assets` (仅 `image-deck` / `png-canvas`)
+
+> v0.2：`static_assets` 不再是 top-level，而是 `render.static_assets` 的子字段。`template-html` kind 没有这一块。kind-specific 形状见 `ir-kinds/<kind>.md`。
 
 This is the most failure-prone step. The hand-compile experience: **do not paraphrase. Copy strings verbatim.**
 
-For prompt-shaped skills (image-per-slide kind):
+For `image-deck` skills:
 
 ```bash
 # find the prompt patterns file
@@ -134,9 +152,13 @@ Common patterns:
 | Recipe → image | `dish` (text), `cuisine` (select), `mood` (select) |
 | Markdown → document | `content` (textarea), `format` (select: docx/pdf), `font_family` (select) |
 
-### 3.4 `llm_phase`
+### 3.4 `llm_pipeline` (v0.2 数组化)
 
-Draft the `system_prompt_template`. Start from the source SKILL.md's "Workflow" section — quote it as guidance to the LLM. Then add **strict JSON output rules**:
+`llm_pipeline` 是一个数组，含 1-3 个**严格线性**的 step。**默认起草单个 step**（`id: "plan"`, `uses: []`）；仅当 source skill 明显是"两轮 LLM（intake → spine）"形态才拆 2-3 step。每个 step 的 `uses` **只能引前序 step**——任何分叉 / 合流 / 条件跳转都应在 analyzer Phase 4 被判为 agent-shaped。
+
+每个 step 的字段：`id` / `model_hint` / `temperature` / `json_mode` / `system_prompt_template` / `user_prompt_template` / `uses` / `expected_output_schema`（详见 `ir-core.md §3`）。
+
+Draft each step's `system_prompt_template`. Start from the source SKILL.md's "Workflow" section — quote it as guidance to the LLM. Then add **strict JSON output rules**:
 
 ```text
 You are the planner for <DISPLAY_NAME>. Read the user's content and output a deck spine JSON ...
@@ -150,20 +172,28 @@ Rules:
 3. <Skill-specific rule, e.g. titles ≤ 12 chars>.
 ```
 
-Draft `user_prompt_template` referencing `{{...}}` placeholders for every input_schema key.
+Draft `user_prompt_template`. v0.2 模板语法有两个命名空间：
+- `{{input.<key>}}` — 引用 input_schema 字段（v0.2 强制 `input.` 前缀）
+- `{{steps.<step_id>.output.<dotted-path>}}` — 引用前序 step 的输出（仅多 step 时用）
 
-Draft `expected_output_schema` (JSON Schema). This is the contract the LLM must satisfy; the output HTML validates against it. Be permissive on optional fields, strict on required ones.
+Draft `expected_output_schema` (JSON Schema) for each step. This is the contract the LLM must satisfy; the output HTML validates against it. Be permissive on optional fields, strict on required ones.
 
 `json_mode`: default `prompt-only` (most compatible). Only set `response-format` if you've verified the LLM provider supports it for this model.
 
-### 3.5 `render_phase`
+### 3.5 `render` (polymorphic — shape 取决于 `ir_kind`)
 
-- `kind`: pick one from analyzer phase 8 (v0.1: only `image-per-slide`)
-- `iterator`: the JSONPath-lite expression for which array in the LLM output to iterate. Usually `$.slides`.
-- `per_item.prompt_template`: this is the **per-slide image prompt**. Most of its body is `{{static_assets.X}}` substitutions; the variable part is `{{item.composition}}`, `{{item.title}}`, `{{item.required_text}}`. Mirror the source skill's "Complete Page Image Prompt" template (e.g. `references/prompt-patterns.md`).
-- `per_item.size_by_role`: from `static_assets.theme_tokens.size_by_role`, or fresh defaults if absent
-- `per_item.api`: matches an adapter from `lib-mapper.md`
-- `per_item.endpoint_mode`: `generations` for from-scratch generation; `edits` when the API only supports edits (e.g. `image.token-recyclebin.com`)
+v0.2 的 `render` 形状由 `ir_kind` 决定。完整 sub-schema 见 `ir-kinds/<kind>.md`，要点：
+
+**`image-deck`** — `render.static_assets.{style_lock, role_locks?, reference_clauses?, archetypes?, theme_tokens?}` + `render.iterator` + `render.per_item.{prompt_template, size_by_role, api, endpoint_mode}`：
+- `iterator`: JSONPath-lite，指向 LLM 输出里要迭代的数组。v0.2 路径带 step 前缀，如 `$.steps.plan.output.slides`。
+- `per_item.prompt_template`: per-page image prompt。body 多为 `{{static_assets.X}}` 替换，变量部分是 `{{item.composition}}` / `{{item.title}}` / `{{item.required_text}}`。
+- `per_item.size_by_role`: 来自 `static_assets.theme_tokens.size_by_role`，必须覆盖 IR 里出现的所有 role。
+- `per_item.api`: 对应 `adapters.md` 里的 adapter（`openai-images-compat`）。
+- `per_item.endpoint_mode`: `generations`（从零生成）/ `edits`（仅支持 edits 的 endpoint，如 `image.token-recyclebin.com`）。
+
+**`png-canvas`** — `render.{canvas_size, static_assets.{style_lock, reference_clauses}, prompt_template, api, endpoint_mode, compositing: "none", fonts}`，N=1，无 `iterator` / `per_item`。
+
+**`template-html`** — `render.{output_form, template_html?, css_lock?, data_binding, sanitizer, features}`，无 image API。`sanitizer` 必须显式选（`dompurify-strict` / `dompurify-relaxed` / `none-trust`）。
 
 ### 3.6 `browser_runtime`
 
@@ -173,11 +203,11 @@ Draft `expected_output_schema` (JSON Schema). This is the contract the LLM must 
 - `concurrency`: default `3` (per hero case)
 - `timeout_ms`: defaults are fine; only change if skill is known slow
 - `retry`: default `{ llm: 0, image: 1 }`
-- `extra_libs`: empty for v0.1 image-per-slide skills
+- `extra_libs`: empty for the three shipped kinds; only spike-gated kinds (`pptx-canvas`) need it
 
 ### 3.7 `error_ux`
 
-Start from `ir-schema.md §7` defaults; adapt language to the skill (e.g. say "slide" or "page" or "card" appropriately).
+Start from `ir-core.md §5` defaults; adapt language to the skill (e.g. say "slide" or "page" or "card" appropriately).
 
 ### 3.8 `attribution`
 
@@ -192,14 +222,14 @@ Direct from LICENSE/NOTICE. The `footer_html` should be a one-line snippet that 
 Surface the IR JSON to the user. Format like:
 
 ```text
-IR 草稿（ir_version: 0.1）
+IR 草稿（ir_version: 0.2, ir_kind: image-deck）
 
 ▸ skill_meta:     <name> · <license> · @<author>
-▸ static_assets:  style_lock (XXX chars), role_locks: [cover, body], archetypes: [N items]
 ▸ input_schema:   content/audience/scenario/length
-▸ llm_phase:      model=<deepseek-chat>, json_mode=prompt-only, output: deck_type+slides[]
-▸ render_phase:   kind=image-per-slide, iterator=$.slides, api=openai-images-compat
+▸ llm_pipeline:   [plan] model=<deepseek-chat>, json_mode=prompt-only, output: deck_type+slides[]
 ▸ browser_runtime:llm=https://api.deepseek.com/v1, image=<image-endpoint>
+▸ render:         static_assets.style_lock (XXX chars), role_locks: [cover, body],
+                  archetypes: [N items], iterator=$.steps.plan.output.slides, api=openai-images-compat
 ▸ attribution:    <Author> · <License> · <link>
 
 Open questions before I lock IR:
@@ -213,7 +243,7 @@ Save IR to `<output-dir>/<skill-name>.ir.json` after user confirms.
 
 ## Phase 4 — Mapper
 
-Read `lib-mapper.md`. For every external dependency in the source skill, find the row.
+Read `adapters.md`（API 调用契约）与 `render-libs.md`（render-time inline JS lib）. For every external dependency in the source skill, find the row.
 
 For each unfound row, run USER GATE 3 to either:
 - add a new row (with verification status noted)
@@ -234,6 +264,15 @@ Lock the user's answers into IR.browser_runtime.default_endpoints.
 
 > v0.2 关键变化: composer 不再是"单模板 + Mustache 填空", 而是 **skeleton + block + adapters 三步组装**。
 > 实现见 `skill/compose.py`(可直接 `python3 skill/compose.py <ir.json> <out.html>` 调).
+
+### 5.0 frontend-design pass (v0.3, 强制)
+
+跑 composer 之前**必须**先调 `frontend-design` skill。这是 v0.3 的硬规则(`SKILL.md` Hard rule 7),不可跳过。
+
+- 输入给 frontend-design:`IR.skill_meta`(主题 / 受众)、`IR.ir_kind`、`IR.input_schema`、skeleton 默认皮肤 + `blocks/<kind>.html` 的 kind 样式。
+- 产出:一段**覆盖型 raw CSS**,写进 `IR.theme_overrides`(`ir-core.md §8`)。composer 把它 inline 到 `<style>` 末尾,排在 skeleton 基础样式与 `BLOCK:HEAD` 之后,因此能覆盖二者。
+- 约束:CSS only。无 `<script>`、无远程 `@import` / CDN / web-font URL —— 违反单文件 + 无运行时依赖(Hard rule 3)的产出,必须 inline 化或剔除。
+- 向用户简述方案;用户可改可跳过具体条目,但不能跳过这一步本身。frontend-design 判定默认皮肤已够好 → `theme_overrides` 可留空,但那是"看过的结论"而非省略。
 
 ### 5.1 三步流程
 
@@ -311,7 +350,7 @@ Once served:
 1. Click **设置 / Settings** top-right. Paste your API keys. Save (stored in your browser's `localStorage`; never sent anywhere except to the providers you configure).
 2. Fill the form and click **生成 / Generate**.
 
-> ⚠️ **Provider CORS may not work on first try.** v0.1 ships with `unverified` provider defaults — meaning the maintainer believes they should work but has not browser-tested them end-to-end. If you get a CORS error in DevTools Console, either switch providers (the **设置** panel accepts any OpenAI-compatible endpoint) or run a 30-line local Python reverse proxy. PRs adding verified providers to `lib-mapper.md` are welcome.
+> ⚠️ **Provider CORS may not work on first try.** v0.1 ships with `unverified` provider defaults — meaning the maintainer believes they should work but has not browser-tested them end-to-end. If you get a CORS error in DevTools Console, either switch providers (the **设置** panel accepts any OpenAI-compatible endpoint) or run a 30-line local Python reverse proxy. PRs adding verified providers to `references/adapters.md` are welcome.
 
 ## API keys
 
@@ -387,14 +426,15 @@ If the user runs `skill2web` again on the same skill:
 2. Diff mode: re-run loader, re-run analyzer, compare static_assets text against saved IR. Flag any drift. The user reviews diffs and merges into a new IR.
 3. From scratch: same workflow, but mention to the user that prior IR has been backed up to `<skill-name>.ir.json.bak.<ts>`.
 
-## Known limitations of v0.1 compiler
+## Known limitations of v0.2 compiler
 
-These are intentional (per DESIGN.md):
+These are intentional (per DESIGN.md / DESIGN-v0.2.md):
 
-- **No frontend-design integration**. UI 由 skeleton + block 决定。v0.3。
-- **Only image-per-slide kind**. v0.2 adds template-html / pptx-canvas.
+- **No frontend-design integration**. UI 由 skeleton + block 决定。推迟到 v0.3。
+- **Only three `ir_kind` values shipped**: `image-deck` / `template-html` / `png-canvas`。`pptx-canvas` / `data-table` 仅 schema 草案，spike-gated（DESIGN §11）。
+- **`llm_pipeline` 是静态 DAG**（v0.3）。`uses` 可多父、step 可带 `when` 分支条件，但图必须编译期完全已知且有限；无界循环 / 运行时决定图形状 → 判 agent-shaped 拒。
 - **No automated provider CORS verification**. Composer warns the user, doesn't probe.
 - **No zip emit**. Compiled output is single HTML; users download per-file.
-- **No multi-skill compile in one run**. One source skill → one HTML per invocation.
+- **No multi-skill compile in one run**. One source skill → one HTML per invocation（混合输出 → 拆多次编译）。
 
 If any of these blocks a real compile, the user should be told now (USER GATE 1 or 3) — not at emit time.

@@ -1,8 +1,8 @@
-# TODO — skill2web v0.2.x backlog
+# TODO — skill2web v0.3.x backlog
 
-跟踪 v0.2 release 之后必须做的事。来源:DESIGN-v0.2.md §5.2 (spike-gated)、
-§5.3 (明确不做)、§12 (Open Questions)、原 v0.1 codex review session
-`019e2743-1b49-7851-9015-c1aef7b7b645` 中未在 v0.2 落地的条目。
+跟踪 v0.3 release 之后必须做的事。来源:DESIGN-v0.2.md §5.2 (spike-gated)、
+§5.3 (明确不做)、§12 (Open Questions)、DESIGN-v0.3.md、原 v0.1 codex review session
+`019e2743-1b49-7851-9015-c1aef7b7b645` 中未落地的条目。
 
 每条标了 **trigger condition** — 做这件事的"时机"。
 
@@ -17,6 +17,31 @@
 ✅ Phase C — `ir-kinds/png-canvas.md` + `blocks/png-canvas.html` + `examples/guizang-cover.ir.json`
 ✅ ian-handdrawn-ppt v0.2 重编 (`hero-cases/ian-handdrawn-ppt-v0.2/`)
 ✅ 三个 dist 产物 (Node.js JS 语法检查通过)
+
+---
+
+## v0.3 已交付 (本 release 完成项)
+
+✅ 静态 DAG `llm_pipeline` — `uses` 多父(合流)+ step `when` 结构化分支(分叉);compose.py `js-pipeline` 输出 `when`;skeleton runner `evalWhen()` + 跳过传播(全父跳过才跳)+ `skip` 进度态。Node 模拟两条分支路径验证通过。
+✅ 强制 frontend-design pass (Phase 5.0) — SKILL.md Hard rule 7-8;`IR.theme_overrides` (ir-core.md §8) raw CSS 注入 skeleton。
+✅ Analyzer §4 改写 — DAG 不再一刀切拒;分界改为"控制流图编译期是否完全已知且有限"。
+✅ 文档死引用修复 — `lib-mapper.md` → `adapters.md`/`render-libs.md`;`ir-schema.md` → `ir-core.md`;compiler-workflow.md Phase 3 从 v0.1 IR 迁移到 v0.2/v0.3。
+
+---
+
+## ✅ 静态 DAG hero case — v0.3 已交付
+
+`teams-channel-post-writer`(daymade/claude-code-skills,MIT)—— 真实 GitHub skill,其
+`writing-guidelines.md` 定义两种结构不同的帖子范式(功能公告 5 段 / 技巧 6 段),如实编译为
+`classify → draft_feature | draft_tip → polish` 静态 DAG。产物在 `dist/teams-channel-post-writer.{html,ir.json,README.md}`。
+
+端到端实测(StepFun `step-3.5-flash`,浏览器真实跑):
+- feature 路径:`draft_feature` RUN、`draft_tip` SKIP、`polish` RUN ✓
+- tip 路径:`draft_feature` SKIP、`draft_tip` RUN、`polish` RUN ✓
+- 截图:`docs/screenshots/e2e-teams-dag-{feature,tip}.png`
+
+**剩余 backlog**:把它补成完整 `hero-cases/teams-channel-post-writer/`(LESSONS.md +
+source-attribution.md);把它列进 README hero 表。
 
 ---
 
@@ -101,11 +126,11 @@
 
 ---
 
-## v0.3 — frontend-design skill 集成 (从 v0.1 + v0.2 留)
+## ✅ frontend-design skill 集成 — v0.3 已交付
 
-**Trigger**: v0.2 第二个 / 第三个外部用户反馈"当前 skeleton + block 视觉够用 / 不够用"。
-
-只有 UI 多样性需求真实出现, 才动手 — 否则 frontend-design 集成是预防性 over-engineering。
+v0.3 把它实装为 Phase 5.0 强制 pass:每次编译在 composer 前必须调 `frontend-design`
+skill,产出收进 `IR.theme_overrides`(raw CSS,inline 到 `<style>` 末尾)。见
+SKILL.md Hard rule 7-8、compiler-workflow.md §5.0、ir-core.md §8。
 
 ---
 

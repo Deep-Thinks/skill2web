@@ -10,30 +10,33 @@
 
 AI 从业者写了大量高质量 Claude Code skill（PPT、海报、菜谱、文档生成），但**只有装了 Claude Code 的开发者才能用**。普通人——不懂"什么是 agent"的朋友、亲戚、协会成员——无法体验。`skill2web` 把流程化 skill（输入 → N 次 LLM 调用 → 模板渲染 → 输出）编译为一个单文件 HTML，让任何人点开即用。
 
-适用范围：流程化 skill（输入 → 1-3 次 LLM 调用 → 模板渲染 → 输出）。多轮 agent 分支 / 不可拆 skill 由 compiler 主动拒绝。
+适用范围：流程化 skill（输入 → 1-3 次 LLM 调用 → 模板渲染 → 输出）。v0.3 起 LLM pipeline 是**静态 DAG** —— 只要分支图在编译期完全已知且有限，分叉 / 合流都行。无界循环 / 运行时才决定的控制流（真 agent 形态）由 compiler 主动拒绝。
 
 ## Hero cases（真实端到端实测）
 
-下面五个 case 都用 `skill/compose.py` 从 IR 编出来，浏览器里跑过真实 API 调用，截图为最终产物的展示态。
+下面这些 case 都用 `skill/compose.py` 从 IR 编出来，浏览器里跑过真实 API 调用，截图为最终产物的展示态。
 
 | Hero case | `ir_kind` | 上游 skill | 截图 |
 |---|---|---|---|
 | **ian-handdrawn-ppt** | `image-deck` | [helloianneo/ian-handdrawn-ppt](https://github.com/helloianneo/ian-handdrawn-ppt) | <img src="docs/screenshots/e2e-ian-handdrawn-ppt.png" width="320" alt="手绘风 PPT 多图卡片"> |
+| **wuman-brief-to-poster** | `image-deck` | [Rosiawu/wuman-brief-to-poster](https://github.com/Rosiawu/wuman-brief-to-poster) | <img src="docs/screenshots/e2e-wuman-brief-to-poster.png" width="320" alt="实验编辑式海报"> |
 | **prompt-master** | `template-html` | [nidhinjs/prompt-master](https://github.com/nidhinjs/prompt-master) | <img src="docs/screenshots/e2e-prompt-master.png" width="320" alt="prompt master 单页润色"> |
 | **app-onboarding-blueprint** | `template-html`（降级） | [adamlyttleapps/claude-skill-app-onboarding-questionnaire](https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire) | <img src="docs/screenshots/e2e-app-onboarding-blueprint.png" width="320" alt="onboarding 蓝图设计稿"> |
 | **synthetic-essay-polisher** | `template-html` | 合成 hero case（无上游） | <img src="docs/screenshots/e2e-synthetic-essay-polisher.png" width="320" alt="长文润色结构化输出"> |
 | **guizang-cover** | `png-canvas` | 形态参照 [op7418/guizang-ppt-skill](https://github.com/op7418/guizang-ppt-skill) | <img src="docs/screenshots/e2e-guizang-cover.png" width="320" alt="封面海报单图"> |
 
-## 当前状态 (v0.2.1, 2026-05-15)
+## 当前状态 (v0.3, 2026-05-18)
 
-- 设计文档: `DESIGN.md` (v0.1) + `DESIGN-v0.2.md` (v0.1 → v0.2 演化)
-- v0.2 编译器: 三步组装 (skeleton + block + adapter) — `python3 skill/compose.py <ir.json> <out.html>`
+- 设计文档: `DESIGN.md` (v0.1) + `DESIGN-v0.2.md` (→ v0.2) + `DESIGN-v0.3.md` (→ v0.3)
+- 编译器: 三步组装 (skeleton + block + adapter) — `python3 skill/compose.py <ir.json> <out.html>`
 - 支持三个 `ir_kind`:
-  - `image-deck` — 多张相关图 (例 `ian-handdrawn-ppt`)
+  - `image-deck` — 多张相关图 (例 `ian-handdrawn-ppt`, `wuman-brief-to-poster`)
   - `template-html` — markdown / 报告输出 (例 `synthetic-essay-polisher`, `prompt-master`)
   - `png-canvas` — 单张封面 / 海报 (例 `guizang-cover`)
-- v0.2.1 增加 "SOP-vs-tool 降级路径"：agent-shape skill 也能编译，但 compiler 会显式告诉你降级了什么（例 `app-onboarding-blueprint`）
-- v0.1 IR → v0.2 自动迁移: `python3 skill/migrate_v01_to_v02.py <v0.1.json> <v0.2.json>`
+- **v0.3 — 静态 DAG `llm_pipeline`**：step 的 `uses` 可多父（合流），可带结构化 `when` 分支条件（分叉）。图必须编译期完全已知且有限；runtime 当作状态机执行，按条件跳过分支。只拒无界 / 运行时决定形状的控制流。
+- **v0.3 — 强制 frontend-design pass**：每次编译在组装前必须调 `frontend-design` skill，产出的 CSS 收进 `IR.theme_overrides`。
+- v0.2.1 — "SOP-vs-tool 降级路径"：agent-shape skill 仍能编译，但 compiler 会显式告诉你降级了什么（例 `app-onboarding-blueprint`）。
+- IR 迁移: v0.1 → v0.2 用 `skill/migrate_v01_to_v02.py`；v0.2 → v0.3 无需迁移（严格超集）。
 - spike-gated (DESIGN §11): `pptx-canvas` / `data-table` 仅 schema 草案,等真实 skill 触发实装
 
 ## 项目结构
@@ -44,7 +47,8 @@ skill2web/
 ├── README.zh-CN.md                    # 中文（本文档）
 ├── LICENSE                            # MIT
 ├── DESIGN.md                          # v0.1 设计文档
-├── DESIGN-v0.2.md                     # v0.2 演化文档（本 release 实施依据）
+├── DESIGN-v0.2.md                     # v0.2 演化文档
+├── DESIGN-v0.3.md                     # v0.3 演化文档（本 release 实施依据）
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── TODO.md                            # v0.2.x backlog

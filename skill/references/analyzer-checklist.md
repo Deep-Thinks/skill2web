@@ -4,6 +4,10 @@ Decide whether a source skill is compilable. **Refuse early** — a clean refusa
 
 > v0.2 (2026-05-15)：决策树解除了"仅 image-per-slide"硬锁。kind 现在按 §8 路由到具体的
 > sub-checklist。Step 9 (运行环境等价性) 按 codex Q4 提到 F0 最前。
+>
+> v0.3：§4 不再一刀切拒 DAG。`llm_pipeline` 升级为**静态 DAG**(分叉 + 合流),
+> 可编译性的分界改为"控制流图编译期是否完全已知且有限"。只有运行时才决定轮数 /
+> 图形状的(无界循环、tool-shape agent)才拒。
 
 ## The compilability question, in one sentence
 
@@ -35,17 +39,28 @@ Count steps that involve:
 
 - **0** (pure deterministic transform like file convert) → `compilable, but trivial` — proceed; question to user: "这个 skill 其实不需要 LLM,确认要做成网页吗?"
 - **1-3** → continue
-- **4+ distinct LLM steps with different prompts** → `compilable but bloated` — ask the user if the steps can be collapsed (often they can; e.g. intake + planning + spine → one call). If not, this is borderline.
-- **N where N depends on intermediate state** (agent-shaped) → `refusal: agent-shaped`
+- **4+ steps** → 看**单条执行路径**上的 LLM 调用数,不是 pipeline 数组的总节点数。v0.3 静态 DAG 里互斥分支(`path_a` / `path_b`)同一次运行只跑一条,所以 `classify → path_a|path_b → merge` 总节点 4、单路径仅 3,合法。单条路径仍 > 3 → `compilable but bloated`,问用户能否合并(常常能;如 intake + planning + spine → 一次调用)。
+- **N where N depends on intermediate state** (轮数 / 图形状运行时才定 = agent-shaped) → `refusal: agent-shaped`
 
 ### 4. Are there conditional branches that need agent judgment?
 
 Look for SKILL.md text like "if X, do Y else Z" where X is something the LLM must observe at run-time (not at form-input time).
 
-- Found → can the branch be expressed in the **system prompt** ("decide X and pick A or B accordingly") instead of as separate LLM calls? If yes, fold and proceed. If no → `refusal: agent-branching`
+- Found → 按下面三档处理:
+  1. 能折进**单个 system prompt**("你来判断 X,据此选 A 或 B")→ 折叠,继续。最简单,优先。
+  2. 折不进单 prompt(两支需要**不同的下游 pipeline** / 不同步数 / 不同输出结构),但**分支图编译期完全已知且有限** → 表达为 v0.3 **静态 DAG**:一个 `classify` step + 若干带 `when` 的分支 step + 一个总执行的 `merge` step(见 `ir-core.md §3.4`)。继续。
+  3. 分支图编译期**不可知**(走哪条、走几条由运行时自由决策)→ `refusal: agent-branching`
 - Not found → continue
 
-**v0.2 强约束**: 即使是 1-3 次 LLM,只要后一次 LLM 的 prompt 必须根据前一次输出**做条件分叉 / 合流**(同一 step 的 `uses` 引用兄弟 step,或 prompt 模板根据中间结果选不同分支),一律视为 agent-shaped。skill2web 的 `llm_pipeline` 是**严格线性**的(`uses` 只能引前序 step),不接受 DAG 形状。
+**v0.3 判定准则**: skill2web 的 `llm_pipeline` 是**静态 DAG**(v0.3 起;v0.2 是其线性子集)。可编译性的真正分界是 **"控制流图在编译期是否完全已知且有限"**:
+
+| 形态 | 判定 |
+|---|---|
+| 严格线性 1-3 步 | ✅ 可编译 |
+| 分叉 / 合流,但图固定、`when` 是数据比较、节点有限 | ✅ 可编译(静态 DAG) |
+| 循环 / 轮数运行时定 / "调到满意为止" / 图形状运行时才决定 | ❌ `refusal: agent-shaped` |
+
+注意:静态 DAG 仍有约束 —— `uses` 只能引前序 step(数组拓扑序),`when` 只能是 `ir-core.md §3.4` 的结构化条件(非自由表达式),`render` 读取的终端 step 必须无条件执行。
 
 ### 4.5. SOP-shape vs tool-shape agent (v0.2.1 新增)
 
@@ -182,12 +197,15 @@ When refusing, **always**:
 
 ### `refusal: agent-shaped`
 
-> 这个 skill 包含 **multi-turn agent 决策**: [SKILL.md line X 引用]。它在每次运行时根据中间结果决定下一步走什么 prompt — 这不是流程化 skill 的形态,无法编译成无 agent runtime 的网页。
+> 这个 skill 的控制流**编译期不可知**: [SKILL.md line X 引用]。它在运行时根据中间结果决定走几轮 / 走什么 prompt(无界循环 / "调到满意为止" / 图形状运行时才定)—— 这需要 agent runtime,无法编译成静态网页。
+>
+> 注意区分:**分叉 / 合流本身不是拒绝理由**。v0.3 的 `llm_pipeline` 是静态 DAG,只要分支图编译期完全已知且有限(`classify → path_a|path_b → merge`),就能编译。被拒的是图的**形状 / 轮数运行时才决定**。
 >
 > 替代方案:
 > - 跑在 Claude Code 里(原始用法)
 > - 试试 Agent37 这类 agent-runtime 托管服务
-> - 如果 N 轮 agent 其实是固定的 N 步流程,可以重写 SKILL.md 把它写成线性 workflow(skill2web 的 `llm_pipeline` 支持 1-3 次顺序 LLM 调用,但 `uses` 只能引前序 step,**不允许分叉/合流/条件跳转**),然后再来编译
+> - 如果"N 轮 agent"其实是**固定的有限分支**,重写 SKILL.md 把它表达成静态 DAG(一个分类 step + 带 `when` 的分支 step + 总执行的 merge step,见 `ir-core.md §3.4`),然后再来编译
+> - 如果循环次数其实有**固定上界**,把它展开成上界数量的固定 step
 
 ### `refusal: unmapped-dep`
 

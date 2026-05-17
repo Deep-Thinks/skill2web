@@ -10,7 +10,7 @@
 
 AI practitioners have written a wealth of high-quality Claude Code skills (PPT generators, posters, recipe writers, doc polishers), but **only developers with Claude Code installed can run them**. The non-technical audience — your friends, family, or community members who don't know "what an agent is" — can't experience them. `skill2web` compiles flow-shaped skills (input → N LLM calls → template render → output) into a single-file HTML so anyone can use them by clicking a link.
 
-**Scope:** flow-shaped skills (input → 1–3 LLM calls → template render → output). Multi-turn agent branches / non-decomposable skills are explicitly refused by the compiler.
+**Scope:** flow-shaped skills (input → 1–3 LLM calls → template render → output). Since v0.3 the LLM pipeline is a **static DAG** — branch/merge is fine as long as the graph is fully known and finite at compile time. Unbounded loops / runtime-decided control flow (true agent shape) are explicitly refused by the compiler.
 
 ## Hero cases (end-to-end verified)
 
@@ -19,21 +19,24 @@ Each case below was compiled from an IR via `skill/compose.py`, run against real
 | Hero case | `ir_kind` | Upstream skill | Screenshot |
 |---|---|---|---|
 | **ian-handdrawn-ppt** | `image-deck` | [helloianneo/ian-handdrawn-ppt](https://github.com/helloianneo/ian-handdrawn-ppt) | <img src="docs/screenshots/e2e-ian-handdrawn-ppt.png" width="320" alt="hand-drawn PPT image deck"> |
+| **wuman-brief-to-poster** | `image-deck` | [Rosiawu/wuman-brief-to-poster](https://github.com/Rosiawu/wuman-brief-to-poster) | <img src="docs/screenshots/e2e-wuman-brief-to-poster.png" width="320" alt="experimental-editorial poster"> |
 | **prompt-master** | `template-html` | [nidhinjs/prompt-master](https://github.com/nidhinjs/prompt-master) | <img src="docs/screenshots/e2e-prompt-master.png" width="320" alt="prompt master template render"> |
 | **app-onboarding-blueprint** | `template-html` (downgraded) | [adamlyttleapps/claude-skill-app-onboarding-questionnaire](https://github.com/adamlyttleapps/claude-skill-app-onboarding-questionnaire) | <img src="docs/screenshots/e2e-app-onboarding-blueprint.png" width="320" alt="onboarding blueprint"> |
 | **synthetic-essay-polisher** | `template-html` | synthetic (no upstream) | <img src="docs/screenshots/e2e-synthetic-essay-polisher.png" width="320" alt="long-form essay polisher"> |
 | **guizang-cover** | `png-canvas` | shape from [op7418/guizang-ppt-skill](https://github.com/op7418/guizang-ppt-skill) | <img src="docs/screenshots/e2e-guizang-cover.png" width="320" alt="cover poster single image"> |
 
-## Current status (v0.2.1, 2026-05-15)
+## Current status (v0.3, 2026-05-18)
 
-- Design docs: [`DESIGN.md`](DESIGN.md) (v0.1) + [`DESIGN-v0.2.md`](DESIGN-v0.2.md) (v0.1 → v0.2 evolution)
-- v0.2 compiler — three-step assembly (skeleton + block + adapter): `python3 skill/compose.py <ir.json> <out.html>`
+- Design docs: [`DESIGN.md`](DESIGN.md) (v0.1) + [`DESIGN-v0.2.md`](DESIGN-v0.2.md) (→ v0.2) + [`DESIGN-v0.3.md`](DESIGN-v0.3.md) (→ v0.3)
+- Compiler — three-step assembly (skeleton + block + adapter): `python3 skill/compose.py <ir.json> <out.html>`
 - Three supported `ir_kind` values:
-  - `image-deck` — multiple related images (e.g. `ian-handdrawn-ppt`)
+  - `image-deck` — multiple related images (e.g. `ian-handdrawn-ppt`, `wuman-brief-to-poster`)
   - `template-html` — markdown / structured report (e.g. `synthetic-essay-polisher`, `prompt-master`)
   - `png-canvas` — single cover / poster (e.g. `guizang-cover`)
-- v0.2.1 adds the **SOP-vs-tool downgrade path** — agent-shape skills can be compiled, but the compiler tells you explicitly what was dropped (see `app-onboarding-blueprint`).
-- v0.1 IR → v0.2 auto-migration: `python3 skill/migrate_v01_to_v02.py <v0.1.json> <v0.2.json>`
+- **v0.3 — static-DAG `llm_pipeline`**: a step's `uses` may have multiple parents (merge) and carry a structured `when` branch condition (fork). The graph must be fully known and finite at compile time; the runtime executes it as a state machine with conditional skip. Only unbounded / runtime-shaped control flow is refused.
+- **v0.3 — mandatory frontend-design pass**: every compile must consult the `frontend-design` skill before composing; its CSS lands in `IR.theme_overrides`.
+- v0.2.1 — the **SOP-vs-tool downgrade path**: agent-shape skills can still be compiled, but the compiler states explicitly what was dropped (see `app-onboarding-blueprint`).
+- IR migration: v0.1 → v0.2 via `skill/migrate_v01_to_v02.py`; v0.2 → v0.3 needs none (strict superset).
 - Spike-gated (DESIGN §11): `pptx-canvas` / `data-table` exist as schema drafts only; implementation waits for a real triggering skill.
 
 ## Project structure
@@ -44,7 +47,8 @@ skill2web/
 ├── README.zh-CN.md                    # Chinese mirror
 ├── LICENSE                            # MIT
 ├── DESIGN.md                          # v0.1 design doc
-├── DESIGN-v0.2.md                     # v0.2 evolution doc (this release)
+├── DESIGN-v0.2.md                     # v0.2 evolution doc
+├── DESIGN-v0.3.md                     # v0.3 evolution doc (this release)
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── TODO.md                            # v0.2.x backlog

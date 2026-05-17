@@ -6,7 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-See [`TODO.md`](TODO.md) for the v0.2.x backlog (spike-gated kinds, lib-mapper verification log, etc.).
+See [`TODO.md`](TODO.md) for the backlog (spike-gated kinds, provider CORS verification log, a static-DAG hero case).
+
+## [0.3.0] — 2026-05-18
+
+### Added
+- **Static-DAG `llm_pipeline`** — a step's `uses` may have multiple parents (merge / fan-in) and carry a structured `when` branch condition (fork). The graph must be fully known and finite at compile time; the runtime executes it as a state machine with conditional skip. Skip propagation: a step is skipped only when *all* its parents were skipped, so a merge node still runs if any branch produced output. See `references/ir-core.md §3.4`.
+- **`when` condition object** — `{ path, op, value }`; ops `eq` / `ne` / `in` / `gt` / `gte` / `lt` / `lte` / `exists` / `truthy`. Build-time data, not free JS — the runtime compares, never `eval`s.
+- **Mandatory frontend-design pass** (Phase 5.0) — every compile must consult the `frontend-design` skill before composing. Its output is a raw-CSS `IR.theme_overrides`, inlined last in `<style>`. Added as SKILL.md Hard rules 7–8.
+- **`IR.theme_overrides`** — optional top-level raw-CSS string (`ir-core.md §8`); CSS-only, no remote `@import` / CDN / web-font / `<script>`.
+- `skill/templates/skeleton.html` — runtime gains `evalWhen()`, skip propagation in the pipeline runner, and a `skip` progress state.
+
+### Changed
+- **Analyzer §4** — no longer rejects DAG outright. The compilability boundary is now "is the control-flow graph fully known and finite at compile time?": static fork/merge is compilable; unbounded loops / runtime-decided graph shape stay `refusal: agent-shaped`.
+- `refusal: agent-shaped` template — clarifies that fork/merge alone is not a refusal reason.
+- `compose.py` accepts `ir_version` `"0.2"` or `"0.3"`; `js-pipeline` filter emits the optional `when` field.
+- IR doc refs corrected project-wide: dead `lib-mapper.md` → `adapters.md` / `render-libs.md`; dead `ir-schema.md` → `ir-core.md`. `compiler-workflow.md` Phase 3 migrated from v0.1 IR shape to v0.2/v0.3.
+
+### Migration
+- v0.2 → v0.3 needs **no migration script** — v0.3 is a strict superset (optional `when`, multi-parent `uses`, optional `theme_overrides`). A valid v0.2 IR is a valid v0.3 IR.
+
+### Why this matters
+v0.2 rejected all DAG as "agent-shaped" — but a static, finite branch graph is a deterministic workflow, not an agent: the browser just evaluates pure conditions and follows fixed edges. v0.2's refusal conflated an *implementation* limit with a *fundamental* one. v0.3 draws the honest line — compile-time-known-and-finite vs runtime-decided — and unlocks fork/merge skills without ever introducing an agent runtime.
 
 ## [0.2.1] — 2026-05-15
 

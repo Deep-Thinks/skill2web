@@ -1,0 +1,241 @@
+{
+  "ir_version": "0.3",
+  "ir_kind": "template-html",
+  "skill_meta": {
+    "name": "teams-channel-post-writer",
+    "display_name": "Teams 频道帖子助手",
+    "description": "把一个主题 + 已核实的事实写成结构化的 Teams 频道知识分享帖。先判断帖子范式,再走对应结构起草,最后统一润色。",
+    "source": {
+      "type": "github",
+      "url": "https://github.com/daymade/claude-code-skills",
+      "rev": "main",
+      "path_inside_repo": "teams-channel-post-writer"
+    },
+    "license": "MIT",
+    "author": "daymade",
+    "author_links": [
+      "https://github.com/daymade"
+    ]
+  },
+  "input_schema": [
+    {
+      "key": "topic",
+      "type": "text",
+      "label": "帖子主题",
+      "required": true,
+      "placeholder": "例:Claude Code 的 Plan Mode"
+    },
+    {
+      "key": "facts",
+      "type": "textarea",
+      "label": "已核实的事实(发布日期 / 版本 / 行为 / 来源链接)",
+      "required": true,
+      "placeholder": "把你查证过的事实粘进来 —— 这里替代了原 skill 让 agent 联网查官方文档的步骤",
+      "min_chars": 10
+    },
+    {
+      "key": "audience",
+      "type": "text",
+      "label": "目标读者",
+      "required": false,
+      "default": "团队同事"
+    },
+    {
+      "key": "archetype_hint",
+      "type": "select",
+      "label": "帖子范式",
+      "default": "auto",
+      "options": [
+        {
+          "value": "auto",
+          "label": "自动判断(推荐)"
+        },
+        {
+          "value": "feature",
+          "label": "功能发布公告"
+        },
+        {
+          "value": "tip",
+          "label": "最佳实践 / 技巧"
+        }
+      ]
+    }
+  ],
+  "llm_pipeline": [
+    {
+      "id": "classify",
+      "model_hint": "deepseek-chat",
+      "temperature": 0.1,
+      "json_mode": "prompt-only",
+      "system_prompt_template": "你是 Teams 频道帖子的范式分类器。根据用户的主题和事实,判断这篇帖子属于哪种范式:\n- feature:功能发布 / 新特性公告。结构是 5 段:是什么(含发布日期)/ 为什么用 / 怎么用(含示例)/ 关键选项 / 行动号召。\n- tip:最佳实践 / 技巧分享。结构是 6 段:挑战或问题 / 解决方案 / 为什么有效 / 怎么实施(含示例)/ 何时使用 / 相关资源。\n\n只输出 JSON,不要任何其它文字:\n{\"archetype\": \"feature\" 或 \"tip\", \"reason\": \"一句话理由\"}",
+      "user_prompt_template": "帖子主题:{{input.topic}}\n已核实事实:{{input.facts}}\n用户指定范式(auto = 你来判断):{{input.archetype_hint}}\n\n如果用户指定的不是 auto,直接采用用户指定的范式。否则你自己判断。",
+      "uses": [],
+      "expected_output_schema": {
+        "type": "object",
+        "required": [
+          "archetype"
+        ],
+        "properties": {
+          "archetype": {
+            "type": "string",
+            "enum": [
+              "feature",
+              "tip"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "id": "draft_feature",
+      "model_hint": "deepseek-chat",
+      "temperature": 0.5,
+      "json_mode": "off",
+      "system_prompt_template": "你在为内部 Teams 频道写一篇【功能发布公告】。严格按 5 段结构写,输出 markdown:\n1. 标题(一个 emoji + 清晰描述)\n2. 是什么 —— 1-2 句解释,带发布日期 / 版本\n3. 为什么用 —— 说清底层原则,列 3-4 条收益\n4. 怎么用 —— 给 3 个以上具体示例,用「普通做法 vs 更好做法」对照\n5. 关键选项 / 设置 + 行动号召\n\n语气:专业但亲切,可扫读,短段落 + 列表。emoji 只用在标题里。",
+      "user_prompt_template": "帖子主题:{{input.topic}}\n目标读者:{{input.audience}}\n已核实事实:{{input.facts}}\n\n按功能发布公告的 5 段结构写出完整 markdown 初稿。",
+      "uses": [
+        "classify"
+      ],
+      "when": {
+        "path": "steps.classify.output.archetype",
+        "op": "eq",
+        "value": "feature"
+      },
+      "expected_output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "draft_tip",
+      "model_hint": "deepseek-chat",
+      "temperature": 0.5,
+      "json_mode": "off",
+      "system_prompt_template": "你在为内部 Teams 频道写一篇【最佳实践 / 技巧】帖。严格按 6 段结构写,输出 markdown:\n1. 挑战 / 问题 —— 读者会遇到的痛点\n2. 解决方案 / 方法\n3. 为什么有效 —— 连接到底层原则\n4. 怎么实施 —— 给 3 个以上具体示例\n5. 何时使用\n6. 相关资源\n\n语气:专业但亲切,可扫读,短段落 + 列表。emoji 只用在标题里。",
+      "user_prompt_template": "帖子主题:{{input.topic}}\n目标读者:{{input.audience}}\n已核实事实:{{input.facts}}\n\n按最佳实践 / 技巧的 6 段结构写出完整 markdown 初稿。",
+      "uses": [
+        "classify"
+      ],
+      "when": {
+        "path": "steps.classify.output.archetype",
+        "op": "eq",
+        "value": "tip"
+      },
+      "expected_output_schema": {
+        "type": "object"
+      }
+    },
+    {
+      "id": "polish",
+      "model_hint": "deepseek-chat",
+      "temperature": 0.3,
+      "json_mode": "prompt-only",
+      "system_prompt_template": "你拿到一篇 Teams 帖子的初稿(两个范式分支里只有一个产出了内容,另一个是空的)。应用格式规范:标题用一个 emoji;正文不滥用 emoji;关键词加粗;示例 prompt 用代码块;段落简短、可扫读。\n\n把它整理成结构化 JSON 供网页渲染,只输出 JSON:\n{\"title\": \"帖子标题\", \"abstract\": \"一句话导语\", \"sections\": [{\"heading\": \"小节标题\", \"body_md\": \"该小节的 markdown 正文\"}]}",
+      "user_prompt_template": "范式:{{steps.classify.output.archetype}}\n\n功能公告初稿:\n{{steps.draft_feature.output.text}}\n\n技巧初稿:\n{{steps.draft_tip.output.text}}\n\n把上面非空的那份初稿整理润色成最终帖子,输出结构化 JSON。",
+      "uses": [
+        "classify",
+        "draft_feature",
+        "draft_tip"
+      ],
+      "expected_output_schema": {
+        "type": "object",
+        "required": [
+          "title",
+          "sections"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "abstract": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "heading",
+                "body_md"
+              ],
+              "properties": {
+                "heading": {
+                  "type": "string"
+                },
+                "body_md": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "browser_runtime": {
+    "llm_adapter": "openai-chat-compat",
+    "image_adapter": null,
+    "default_endpoints": {
+      "llm": {
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat"
+      }
+    },
+    "concurrency": 1,
+    "timeout_ms": {
+      "llm": 120000,
+      "image": 0
+    },
+    "retry": {
+      "llm": 0,
+      "image": 0
+    },
+    "extra_libs": []
+  },
+  "error_ux": {
+    "missing_llm_key": "请先在 [设置] 里填 LLM API Key。",
+    "missing_image_key": "本工具不需要图像 Key。",
+    "llm_4xx": "LLM 调用被拒绝。常见原因:key 失效 / 余额不足 / 不支持该模型。",
+    "llm_5xx": "LLM 服务暂时不可用,过几秒再试。",
+    "llm_timeout": "LLM 响应超时(>120s)。检查网络,或换 base_url。",
+    "image_4xx": "—",
+    "image_5xx": "—",
+    "image_timeout": "—",
+    "cors": "浏览器拒绝了跨域请求。这个 endpoint 可能不允许从网页直接调用 —— 换一个 CORS 友好的 endpoint,或起一个本地代理。",
+    "json_parse": "LLM 没返回有效 JSON。点 [看 prompt] 查看,或换更强的模型重试。",
+    "kind_unsupported": "此编译产物不支持当前操作。"
+  },
+  "attribution": {
+    "source_skill_link": "https://github.com/daymade/claude-code-skills/tree/main/teams-channel-post-writer",
+    "source_author": "daymade",
+    "source_author_link": "https://github.com/daymade",
+    "source_license": "MIT",
+    "source_license_text_file": "LICENSE",
+    "footer_html": "本网页由 <a href='https://github.com/Deep-Thinks/skill2web' target='_blank'>skill2web</a> 从 <a href='https://github.com/daymade/claude-code-skills/tree/main/teams-channel-post-writer' target='_blank'>teams-channel-post-writer</a>(daymade · MIT)编译。"
+  },
+  "degradation_log": [
+    {
+      "step": "Workflow Step 1 — Understand the Topic(原 skill 让 agent 联网查官方文档 / changelog 核实发布日期与版本)",
+      "original": "agent 在运行时联网研究功能 / 主题,核实发布日期、版本号、权威来源",
+      "replacement": "网页无 agent runtime —— 改为用户在表单 `facts` 字段粘贴自己已核实的事实。事实核查的责任移交给用户。"
+    }
+  ],
+  "render": {
+    "output_form": "markdown",
+    "template_html": "",
+    "css_lock": "",
+    "data_binding": "$.steps.polish.output",
+    "sanitizer": "dompurify-strict",
+    "features": {
+      "toc": false,
+      "footnotes": false,
+      "syntax_highlight": false,
+      "print_css": true,
+      "export_pdf": false
+    }
+  },
+  "theme_overrides": "/* ============================================================\n   theme \"Editorial Brief\" — skill2web frontend-design pass (v0.3)\n   refined internal-memo aesthetic · CSS-only · zero remote deps\n   ============================================================ */\n:root{\n  --paper:#F4F0E6; --paper-deep:#ECE6D7; --card:#FFFDF8;\n  --ink:#211C15; --ink-soft:#5A5246; --ink-faint:#8E8676;\n  --clay:#A8442B; --clay-deep:#84321F; --clay-tint:#F0E3DC;\n  --hair:#E2DAC8; --gold:#9A7B3C;\n  --font-display:\"Iowan Old Style\",\"Palatino Linotype\",Palatino,\"Book Antiqua\",Georgia,\"Songti SC\",serif;\n  --font-body:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"PingFang SC\",\"Microsoft YaHei\",\"Helvetica Neue\",Arial,sans-serif;\n  --shadow:0 1px 2px rgba(33,28,21,.04),0 8px 24px -12px rgba(33,28,21,.14);\n}\nbody{\n  background:linear-gradient(180deg,var(--paper) 0%,var(--paper-deep) 100%) fixed;\n  color:var(--ink); font-family:var(--font-body); -webkit-font-smoothing:antialiased;\n}\nheader{\n  background:transparent; border-bottom:1px solid var(--hair);\n  padding:30px 40px 22px; box-shadow:inset 0 3px 0 var(--clay);\n}\nheader h1{\n  font-family:var(--font-display); font-weight:600; font-size:27px;\n  letter-spacing:-.015em; color:var(--ink);\n}\nheader h1::before{content:\"\\00A7 \";color:var(--clay);font-weight:400}\nheader .subtitle{color:var(--ink-faint);font-size:11.5px;letter-spacing:.02em;margin-top:6px}\nheader .subtitle a{color:var(--ink-soft);border-bottom:1px solid var(--hair)}\n.btn-settings{\n  border:1px solid var(--ink); color:var(--ink); background:transparent;\n  border-radius:0; letter-spacing:.08em; text-transform:uppercase;\n  font-size:10.5px; padding:8px 16px; transition:background .18s,color .18s;\n}\n.btn-settings:hover{background:var(--ink);color:var(--paper)}\nmain{max-width:880px;padding:36px 40px 80px}\nsection{\n  background:var(--card); border:1px solid var(--hair); border-radius:3px;\n  padding:30px 34px; margin-bottom:22px; box-shadow:var(--shadow);\n  animation:rise .5s cubic-bezier(.2,.7,.2,1) both;\n}\nsection:nth-of-type(2){animation-delay:.05s}\nsection:nth-of-type(3){animation-delay:.1s}\nsection:nth-of-type(4){animation-delay:.15s}\n@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}\nsection h2{\n  font-family:var(--font-display); font-size:18px; font-weight:600;\n  letter-spacing:-.01em; padding-bottom:14px; margin-bottom:18px;\n  border-bottom:1px solid var(--hair);\n}\nsection h2 .step-num{\n  width:25px; height:25px; background:var(--clay); color:var(--paper);\n  border-radius:50%; font-family:var(--font-body); font-size:12px;\n  font-weight:600; line-height:25px;\n}\n.form-row label{\n  text-transform:uppercase; letter-spacing:.09em; font-size:10.5px;\n  color:var(--ink-faint); font-weight:600;\n}\n.form-row input[type=\"text\"],.form-row input[type=\"password\"],\n.form-row input[type=\"number\"],.form-row textarea,.form-row select{\n  background:var(--paper); border:1px solid var(--hair); border-radius:3px;\n  color:var(--ink); padding:10px 13px;\n  transition:border-color .16s,box-shadow .16s,background .16s;\n}\n.form-row input:focus,.form-row textarea:focus,.form-row select:focus{\n  border-color:var(--clay); background:var(--card);\n  box-shadow:0 0 0 3px var(--clay-tint);\n}\n.form-row textarea{min-height:150px;line-height:1.6}\n.btn-primary{\n  background:var(--clay); color:#FFF8F1; border-radius:3px; font-weight:600;\n  letter-spacing:.02em; padding:11px 26px; box-shadow:0 2px 0 var(--clay-deep);\n  transition:transform .12s,box-shadow .12s,background .16s;\n}\n.btn-primary:hover{background:var(--clay-deep);transform:translateY(-1px);box-shadow:0 3px 0 var(--clay-deep)}\n.btn-primary:active{transform:translateY(1px);box-shadow:0 1px 0 var(--clay-deep)}\n.btn-primary:disabled{background:var(--ink-faint);box-shadow:none;color:var(--paper)}\n.btn-secondary{\n  background:transparent; border:1px solid var(--ink-soft);\n  color:var(--ink-soft); border-radius:3px;\n}\n.btn-secondary:hover{background:var(--paper-deep);color:var(--ink)}\n#settings-panel{\n  background:linear-gradient(180deg,#FBF6E9,#F6EFDD); border:1px solid #E6D7AE;\n}\n#settings-panel h2{border-bottom-color:#E6D7AE}\n#settings-panel h2 .step-num{background:var(--gold);color:#FFF}\n.progress-step.running .indicator{background:var(--clay)}\n.progress-step.done .indicator{background:var(--gold)}\n.progress-step.skip .indicator{background:var(--hair);color:var(--ink-faint)}\n.progress-step.running{color:var(--ink)}\n#article h1,#article h2,#article h3{font-family:var(--font-display);letter-spacing:-.01em}\n#article h1{color:var(--clay-deep)}\nfooter{border-top:1px solid var(--hair);color:var(--ink-faint);background:transparent}\nfooter a{color:var(--ink-soft)}\n"
+}

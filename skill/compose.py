@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-skill2web composer (v0.2)
+skill2web composer (v0.3)
 
 三步组装:
   1. 取 templates/skeleton.html 为骨架
@@ -157,6 +157,9 @@ def js_pipeline(pipeline: list) -> str:
 
     Each step's prompt template fields are kept as JS template literals so
     they render with Mustache-lite at run-time.
+
+    v0.3: an optional `when` (structured branch condition) is emitted verbatim
+    as a JS object. `uses` may carry multiple parents (static DAG fan-in).
     """
     parts = []
     for step in pipeline:
@@ -171,8 +174,10 @@ def js_pipeline(pipeline: list) -> str:
             f'    system_prompt_template: {f_js_string(sys_t)},',
             f'    user_prompt_template: {f_js_string(usr_t)},',
             f'    uses: {f_js_array(step.get("uses", []))},',
-            "  }",
         ]
+        if step.get("when") is not None:
+            obj_lines.append(f'    when: {f_js_array(step["when"])},')
+        obj_lines.append("  }")
         parts.append("\n".join(obj_lines))
     return "[\n" + ",\n".join(parts) + "\n]"
 
@@ -277,8 +282,8 @@ def substitute_placeholders(html: str, ir: dict) -> tuple[str, list]:
 def compose(ir_path: Path, out_path: Path) -> None:
     ir = json.loads(ir_path.read_text(encoding="utf-8"))
 
-    if ir.get("ir_version") != "0.2":
-        raise ValueError(f"ir_version must be 0.2 (got {ir.get('ir_version')})")
+    if ir.get("ir_version") not in ("0.2", "0.3"):
+        raise ValueError(f"ir_version must be 0.2 or 0.3 (got {ir.get('ir_version')})")
     kind = ir.get("ir_kind")
     if not kind:
         raise ValueError("ir_kind missing")

@@ -11,7 +11,7 @@ IR (Intermediate Representation) 是 **extractor 与 composer 之间的契约**:
 
 ```jsonc
 {
-  "ir_version":     "0.2",
+  "ir_version":     "0.3",
   "ir_kind":        "image-deck"        // §6.3 (sub-schema: ir-kinds/image-deck.md)
                   | "template-html"     // §6.4 (sub-schema: ir-kinds/template-html.md)
                   | "png-canvas"        // §6.5 (sub-schema: ir-kinds/png-canvas.md)
@@ -20,16 +20,18 @@ IR (Intermediate Representation) 是 **extractor 与 composer 之间的契约**:
 
   "skill_meta":      { /* §1 */ },
   "input_schema":    [ /* §2 */ ],
-  "llm_pipeline":    [ /* §3 — 数组化, 严格线性 */ ],
+  "llm_pipeline":    [ /* §3 — 数组化, v0.3 起支持静态 DAG */ ],
   "browser_runtime": { /* §4 */ },
   "error_ux":        { /* §5 */ },
   "attribution":     { /* §6 — 强制 */ },
-  "render":          { /* §7 — polymorphic, shape 取决于 ir_kind */ }
+  "render":          { /* §7 — polymorphic, shape 取决于 ir_kind */ },
+  "theme_overrides": "..."              // §8 — optional, v0.3 frontend-design pass 产出
 }
 ```
 
-`ir_version` 是字符串;v0.2 是当前唯一合法值。
-`ir_kind` 在 v0.2 接受三个完整支持的值与两个 spike-gated 值,见上文。
+`ir_version` 是字符串;v0.3 是当前合法值,composer 同时接受 v0.2(v0.2 IR 是 v0.3 的子集 —— 无 `when`、`uses` 单父)。
+`ir_kind` 接受三个完整支持的值与两个 spike-gated 值,见上文。
+`theme_overrides`(可选,见 §8)是 v0.3 强制 frontend-design pass 的产物。
 
 ---
 
@@ -88,7 +90,10 @@ IR (Intermediate Representation) 是 **extractor 与 composer 之间的契约**:
 ## 3. `llm_pipeline` (required, non-empty array)
 
 > **v0.2 关键变化**: 从 `llm_phase: { ... }` 单对象升为 `llm_pipeline: [ ... ]` 数组。
-> 但**严格线性**, `uses` 只能引前序 step。任何 DAG / 分叉 / 合流 → analyzer Phase 4 拒。
+> **v0.3 关键变化**: 升级为**静态 DAG** —— `uses` 可多父(合流),step 可带 `when`
+> 结构化分支条件(分叉)。但图必须在**编译期完全已知且有限**:`uses` 仍只能引
+> 前序 step(数组拓扑序),`when` 是数据比较而非运行时自由决策,无循环、无运行时
+> 决定的图形状。不满足"编译期已知且有限" → analyzer Phase 4 仍拒为 agent-shaped。
 
 ```jsonc
 [
@@ -109,18 +114,20 @@ IR (Intermediate Representation) 是 **extractor 与 composer 之间的契约**:
     "json_mode":              "prompt-only",
     "system_prompt_template": "...",
     "user_prompt_template":   "前序 intake 结果: {{steps.intake.output.summary}}\n规划 N 张幻灯片...",
-    "uses":                   ["intake"],          // 只能引用更早的 step
+    "uses":                   ["intake"],          // v0.3: 可多父 ["intake","classify"]
+    "when":                   null,                // v0.3 可选: 见 §3.4 静态 DAG 分支
     "expected_output_schema": { /* JSON Schema */ }
   }
 ]
 ```
 
-### 3.1 硬约束 (composer 强制校验)
+### 3.1 硬约束 (composer / runtime 强制)
 
-- `uses` 只能包含**严格在前**的 step id (拓扑序由数组顺序决定,不允许显式拓扑)
-- 同一 step 内 `uses` 数组**禁止循环**(implied — uses 只能引前序就排除了)
+- `uses` 里的每个 id 必须**严格在前**(拓扑序 = 数组顺序)。v0.3 起 `uses` 可含多个父(合流);因为只能引前序,循环天然被排除。
 - 每个 step 的 `expected_output_schema` 必须填;前端 JSON 解析失败时落到 `error_ux.json_parse`
-- 任意一步失败:默认整条 pipeline 终止;UI 显示 "第 N 步失败 + 看 prompt + 重试本步" 按钮(不向上重试)
+- 任意一步**失败**:默认整条 pipeline 终止;UI 显示 "第 N 步失败 + 看 prompt + 重试本步" 按钮(不向上重试)
+- 一步被 `when` 或上游**跳过**(skip)≠ 失败:runtime 记 `state.steps[id] = {skipped:true, output:null}`,进度条标灰,pipeline 继续
+- skip 传播规则:一个 step 当且仅当**它所有父都被跳过**(或自身 `when` 不命中)才被跳过 —— merge / fan-in 节点只要有一个父跑过就执行
 - **1 step 是合法的**,等价于 v0.1 的 `llm_phase` 单对象
 
 ### 3.2 模板语法
@@ -141,20 +148,49 @@ IR (Intermediate Representation) 是 **extractor 与 composer 之间的契约**:
 
 v0.2 默认: `prompt-only`(最兼容)。
 
-### 3.4 禁止的形态
+### 3.4 `when` — 静态 DAG 分支 (v0.3)
+
+`when` 是 step 的**可选**字段。缺省 / `null` → 该 step 无条件执行。它是一个**结构化条件对象**(不是自由 JS 表达式 —— 它是 build-time 数据,runtime 只做比较,不 `eval`):
 
 ```jsonc
-// ❌ DAG 形分叉
-{ "id": "branch_a", "uses": ["intake"] },
-{ "id": "branch_b", "uses": ["intake"] },
-{ "id": "merge",    "uses": ["branch_a", "branch_b"] }   // 合流, 拒绝
-
-// ❌ 条件跳转
-{ "id": "decide",   ... },
-{ "id": "path_a",   "uses": ["decide"], "if": "decide.output.kind === 'A'" }   // 条件, 拒绝
+"when": {
+  "path":  "steps.classify.output.kind",   // dotted lookup into { steps, input }
+  "op":    "eq",                           // 见下表
+  "value": "A"
+}
 ```
 
-任何这种需求 → analyzer Phase 4 视为 agent-shaped。
+`op` 支持:`eq` / `ne` / `in`(value 为数组)/ `gt` / `gte` / `lt` / `lte` / `exists` / `truthy`。
+
+**合法的静态 DAG**(分叉 + 合流,编译期完全已知):
+
+```jsonc
+{ "id": "classify", "uses": [] },
+{ "id": "path_a",   "uses": ["classify"],
+  "when": { "path": "steps.classify.output.kind", "op": "eq", "value": "A" } },
+{ "id": "path_b",   "uses": ["classify"],
+  "when": { "path": "steps.classify.output.kind", "op": "eq", "value": "B" } },
+{ "id": "merge",    "uses": ["classify", "path_a", "path_b"] }   // 合流, 总执行
+```
+
+runtime:`classify` 跑完 → `path_a` / `path_b` 按 `when` 二选一,落选那条 skip → `merge`
+合流(它的父没有全部 skip,所以执行)。`merge` 的 prompt 引用被 skip 分支的输出时
+(`{{steps.path_b.output.text}}`)Mustache-lite 解析为空串,prompt 模板需写得能容忍。
+
+**强约束**:pipeline 可以在中段分叉,但 `render` 读取的那个**终端 step 必须无条件执行**
+(无 `when`,且不会因上游全 skip 而被跳过)。否则 render 拿不到数据。
+
+**仍然禁止的形态**(不是静态 DAG,是 agent-shape):
+
+```jsonc
+// ❌ 无界循环 / 轮数运行时决定
+{ "id": "refine", "uses": ["refine"], "loop_until": "score > 8" }
+
+// ❌ 运行时才决定图形状 / 工具序列(图本身编译期不可知)
+```
+
+判定准则见 `analyzer-checklist.md §4`:**控制流图在编译期是否完全已知且有限**。
+已知有限 → 静态 DAG,可编译;运行时才决定轮数 / 形状 → agent-shaped,拒。
 
 ---
 
@@ -245,6 +281,25 @@ Composer **必须**把 `footer_html`(占位符替换后)插到输出 HTML 的 `<
 
 ---
 
+## 8. `theme_overrides` (optional, v0.3)
+
+一段 **raw CSS 字符串**,composer 原样 inline 到输出 HTML `<style>` 的**最后**(在
+skeleton 基础样式与 `BLOCK:HEAD` kind 样式之后),因此能覆盖二者。
+
+```jsonc
+"theme_overrides": ":root{--accent:#C2410C}\nheader h1{letter-spacing:-.02em}\n..."
+```
+
+这是 v0.3 **强制 frontend-design pass**(见 `SKILL.md` Phase 5、`compiler-workflow.md`)
+的产物:composer 跑之前,编译 agent 必须先调 `frontend-design` skill 得到一套与该
+skill 主题相称的视觉方案,把产出的 CSS 收进本字段。缺省 / 空串 → 用 skeleton 默认皮肤。
+
+约束:**只放 CSS**,不放 `<script>` / `<link>` / `@import` 远程资源(单文件 + 无运行时
+CDN 依赖的硬规则);不放 `url(http...)` 外链。frontend-design 产出若含这些,编译
+agent 必须 inline 化或剔除后再写入。
+
+---
+
 ## v0.1 → v0.2 IR Migration
 
 见 DESIGN-v0.2.md 附录 A。Migration 是**一次性**(断 v0.1 IR,不维护双 schema)。
@@ -262,6 +317,10 @@ Composer **必须**把 `footer_html`(占位符替换后)插到输出 HTML 的 `<
 | Mustache `{{key}}` (input) | `{{input.<key>}}` | 加前缀消歧义 |
 
 `examples/ian-handdrawn-ppt.ir.json` 在 Phase A 走完 migration → 用 v0.2 composer 重编, 输出 JS 行为语义等价(空白/注释允许差异)。
+
+## v0.2 → v0.3 IR Migration
+
+**无需迁移脚本**。v0.3 是 v0.2 的严格超集:`when` 字段可选、`uses` 多父只是放宽约束、`theme_overrides` 可选。一份合法的 v0.2 IR 直接就是合法的 v0.3 IR。composer 同时接受 `ir_version` 为 `"0.2"` 或 `"0.3"`。新编译建议把 `ir_version` 写 `"0.3"` 并补上 frontend-design pass 产出的 `theme_overrides`。
 
 ---
 

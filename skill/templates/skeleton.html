@@ -18,7 +18,10 @@
     "{ {IR.input_schema|js-spec} }"
                               展开为 JS const 数组(field metadata)
     "{ {IR.llm_pipeline|js-pipeline} }"
-                              展开为 JS const 数组,字符串字段已转 JS string literal
+                              展开为 JS const 数组,字符串字段已转 JS string literal;
+                              v0.3 起每个 step 可带 `when`(静态 DAG 分支条件)
+    "{ {IR.theme_overrides|raw} }"
+                              v0.3: frontend-design pass 产出的 raw CSS,缺省为空
     (示例语法用了空格转义以避免 composer 误捕)
 
   Block 协议 (示例 marker 名以"<!- -"形式记录,实际写时去掉中间空格):
@@ -133,8 +136,11 @@
     .progress-step.done .indicator::after{content:"✓"}
     .progress-step.fail .indicator{background:#D66F4D;color:#FFF}
     .progress-step.fail .indicator::after{content:"!"}
+    .progress-step.skip .indicator{background:#C5BFB2;color:#FFF}
+    .progress-step.skip .indicator::after{content:"–"}
     .progress-step.running{color:#111;font-weight:500}
     .progress-step.fail{color:#D66F4D}
+    .progress-step.skip{color:#A8A29A}
 
     #status-log{
       margin-top:14px;padding:12px 14px;background:#FBFAF5;border:1px solid #E5E0D5;
@@ -171,6 +177,10 @@
     /* ===== BLOCK:HEAD CSS (kind-specific, injected by composer) ===== */
     <!-- BLOCK:HEAD -->
     <!-- BLOCK:HEAD_END -->
+
+    /* ===== theme overrides (v0.3: output of the mandatory frontend-design
+       pass; raw CSS from IR.theme_overrides, placed last so it wins) ===== */
+    {{IR.theme_overrides|raw}}
   </style>
 </head>
 <body>
@@ -272,7 +282,7 @@
 <script>
 /* ============================================================
    skill2web compiled output — runtime
-   Generated from skeleton.html · IR ir_version: 0.2
+   Generated from skeleton.html · IR ir_version: 0.2 / 0.3
    ============================================================ */
 
 /* ===== Input form spec (IR.input_schema) ===== */
@@ -519,6 +529,29 @@ async function runWithConcurrency(items, n, worker) {
   await Promise.all(runners);
 }
 
+/* ===== v0.3 static-DAG: structured `when` branch condition =====
+   A step's `when` is { path, op, value }. `path` is a dotted lookup into
+   { steps, input } (e.g. "steps.classify.output.kind" or "input.mode").
+   The condition is build-time data, not user input — no eval, just compare. */
+function evalWhen(cond) {
+  if (!cond) return true;
+  const ctx  = { steps: state.steps, input: state.input };
+  const left = lookupCtx(ctx, cond.path);
+  const v    = cond.value;
+  switch (cond.op) {
+    case "exists": return left !== undefined && left !== null;
+    case "truthy": return !!left;
+    case "eq":     return left === v;
+    case "ne":     return left !== v;
+    case "in":     return Array.isArray(v) && v.indexOf(left) >= 0;
+    case "gt":     return Number(left) >  Number(v);
+    case "gte":    return Number(left) >= Number(v);
+    case "lt":     return Number(left) <  Number(v);
+    case "lte":    return Number(left) <= Number(v);
+    default:       return true;
+  }
+}
+
 /* ===== pipeline runner ===== */
 async function runLlmStep(step, inputValues) {
   const ctx = { input: inputValues, steps: state.steps };
@@ -548,6 +581,7 @@ async function startGenerate() {
     return;
   }
   const inputValues = collectFormValues();
+  state.input = inputValues;
   const missing = INPUT_SCHEMA.filter(f => f.required && (inputValues[f.key] === undefined || inputValues[f.key] === ""));
   if (missing.length) { alert("请填写: " + missing.map(f => f.label).join("、")); return; }
 
@@ -559,6 +593,23 @@ async function startGenerate() {
 
   try {
     for (const step of LLM_PIPELINE) {
+      /* v0.3 static-DAG: skip this step when its own `when` does not match,
+         or when ALL its parents were skipped. A merge / fan-in node still
+         runs if at least one parent produced output — references to a skipped
+         parent's output just resolve to empty via Mustache-lite. The pipeline
+         array is in topological order, so every parent is resolved here. */
+      const parents = step.uses || [];
+      const allParentsSkipped = parents.length > 0
+        && parents.every(u => state.steps[u] && state.steps[u].skipped);
+      let skip = allParentsSkipped;
+      let skipReason = allParentsSkipped ? "上游分支均未执行" : "";
+      if (!skip && step.when && !evalWhen(step.when)) { skip = true; skipReason = "分支条件未命中"; }
+      if (skip) {
+        state.steps[step.id] = { skipped: true, output: null, raw: "" };
+        markStep("ps-" + step.id, "skip");
+        log("step [" + step.id + "] 跳过(" + skipReason + ")");
+        continue;
+      }
       markStep("ps-" + step.id, "running");
       log("step [" + step.id + "] 调 LLM ...");
       try {
